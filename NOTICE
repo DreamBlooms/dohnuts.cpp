@@ -1,0 +1,28 @@
+dohnuts.cpp
+Copyright 2026 DreamBlooms and dohnuts.cpp contributors.
+
+This project is a native C++ inference port of Dohnuts. The source is licensed
+under Apache-2.0. Model weights are separate artifacts with their own terms.
+
+Dohnuts is licensed under Apache-2.0. This port reuses its prompt template,
+calibration, and decision semantics.
+https://github.com/PsiACE/dohnuts
+
+The HTTP transport (src/http.cpp, include/dohnuts/http.hpp) is adapted from
+laya.cpp, licensed under MIT. See third_party/laya.LICENSE for the full text.
+https://github.com/lkarlslund/laya.cpp
+
+cpp-httplib is vendored as a single header (third_party/httplib.h) and is
+licensed under MIT.
+https://github.com/yhirose/cpp-httplib
+
+llama.cpp is used as a pinned submodule and is licensed under MIT.
+https://github.com/ggml-org/llama.cpp
+
+Qwen3.5-0.8B is developed by the Qwen team at Alibaba Cloud and is licensed
+under Apache-2.0. Dohnuts trains language LoRA adapters and a decision head over
+this base. Base weights are downloaded from the original publisher.
+https://huggingface.co/Qwen/Qwen3.5-0.8B
+
+Model weights, source datasets, and third-party model files are not distributed
+with this repository. Reference names do not imply endorsement by their authors.

@@ -1,0 +1,124 @@
+# dohnuts.cpp
+
+[English](README.md) | 简体中文
+
+**同样的决策，纯 CPU 运行。**
+
+用原生 C++ 在 [llama.cpp](third_party/llama.cpp) 上运行 Dohnuts 推理。加载已发布的
+Qwen3.5-0.8B 基座与合并后的 Dohnuts LoRA，用标量决策头对候选标记打分，单次前向返回
+概率分布。不需要 GPU，也不生成文本。
+
+Dohnuts 0.1.0 是纯文本模型。发布的 adapter 只包含语言 LoRA 和打分头，没有视觉权重。
+
+## 一条消息，多个决策
+
+启动服务：
+
+```sh
+build/dohnuts-cli --server --port 8080 \
+  --model work/dohnuts-Q8_0.gguf --head work/head.f32 \
+  --metadata models/dohnuts-0.1.0/dohnuts.json
+```
+
+一次调用同时路由工单并判断是否要求退款：
+
+```sh
+curl http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' \
+  -d '{"state":{"message":"I was charged twice. Please refund the duplicate."},
+       "questions":{"route":{"type":"choice","instructions":"Which team should handle this?",
+         "criteria":["billing","technical support","sales"]},
+         "refund":{"type":"noul","instructions":"Is a refund requested?"}}}'
+```
+
+```json
+{"model":"dohnuts",
+ "answers":{
+   "route":{"type":"choice","confidence":0.2632,
+     "probabilities":{"billing":0.6223,"technical support":0.3283,"sales":0.0494},
+     "choice":"billing"},
+   "refund":{"type":"noul","confidence":0.9572,"noul":0.9572}},
+ "usage":{"input_tokens":93,"images":0}}
+```
+
+`choice`、`score`、`noul` 的语义与 [Dohnuts](../dohnuts) 一致。`/predict` 接受单个请求或
+数组；`/health` 和 `/v1/models` 描述服务状态。加 `--api-key KEY` 后，预测接口需要
+`Authorization: Bearer KEY`。
+
+用 `--input requests.jsonl` 可以对文件逐行跑 CLI；加 `--raw` 则输出未校准的打分 logits。
+
+## 构建
+
+需要 CMake 3.14+、支持 C++20 的编译器，以及 `nlohmann-json3-dev`。
+
+```sh
+git submodule update --init --depth 1
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON
+cmake --build build -j --target dohnuts-cli
+```
+
+llama.cpp 以子模块固定在发行版 `v0.4.1`。用 `-DLLAMA_DIR=...` 可指向其他 checkout。
+
+## 准备模型
+
+发布的是紧凑 checkpoint，不是独立的语言模型。先合并到基座，再转换与量化：
+
+```sh
+python3 scripts/export_dohnuts.py \
+    --base models/Qwen3.5-0.8B \
+    --adapter models/dohnuts-0.1.0 \
+    --out work/merged --head work/head.f32
+
+scripts/build_gguf.sh work/merged work
+```
+
+会生成 `dohnuts-f16.gguf`、`dohnuts-Q8_0.gguf`、`dohnuts-Q4_K_M.gguf`。
+
+## 精度
+
+与 f32 的 Hugging Face 原版对比（6 个文本样例 + 1 个长共享前缀样例），所有候选选择
+完全一致：
+
+| 精度 | 最大 logit 偏差 | 最大概率偏差 |
+| --- | ---: | ---: |
+| f16 | 0.573 | 0.097 |
+| Q8_0 | 0.656 | 0.094 |
+| Q4_K_M | 1.878 | 0.161 |
+
+偏差来自权重量化舍入，随量化程度增大。对概率敏感时用 f16 或 Q8_0，粗判可用 Q4_K_M。
+
+## 速度
+
+Qwen3.5 是混合架构：18 层 gated delta net + 6 层全注意力。CPU 上的瓶颈是 delta net，
+八线程 prefill 约 21 tokens/s，一个两问题的请求需要数秒。Dohnuts 从不生成 token，
+所以只有 prefill 有意义。数值会随主机负载波动，稳定参考请用 `llama-bench`。
+
+## 实现方式
+
+Dohnuts 在每个候选标记处取 post-norm 隐状态，乘一个标量头，再按问题做温度缩放 softmax。
+llama.cpp 已支持该架构（`qwen35`），并通过公共 API 暴露了全部所需能力，核心无需改动：
+
+| Dohnuts | 这里 |
+| --- | --- |
+| 每个候选带保留标记 token 的提示模板 | `protocol.cpp`，tokenize 时不加特殊 token |
+| 各标记处的隐状态 | `llama_get_embeddings_ith`，开启 `embeddings=true`、关闭 pooling |
+| 标量打分头 `Linear(1024, 1)` | `engine.cpp` 中 `head.f32` 点积 |
+| 温度 softmax、熵置信度、期望分数 | `protocol.cpp` 的 `calibrate_answer` |
+| 共享输入前缀 | 公共前缀只算一次，再用 `llama_memory_seq_cp` 复用 |
+
+Norm 权重按 `weight + 1` 存储，与 Dohnuts 的融合算子一致。
+
+## 目录
+
+```
+include/dohnuts/engine.hpp    引擎接口
+include/dohnuts/protocol.hpp  提示渲染、校准、predictor
+src/engine.cpp                llama.cpp 封装：加载、tokenize、批量打分
+src/protocol.cpp              Dohnuts 模板与答案
+src/main.cpp                  CLI 与 HTTP 服务
+scripts/                      模型导出与 GGUF 构建
+```
+
+## 许可证
+
+代码采用 [Apache-2.0](LICENSE)。HTTP 层改编自 [laya.cpp](https://github.com/lkarlslund/laya.cpp)，
+遵循 MIT；第三方条款见 [NOTICE](NOTICE)。Dohnuts 模型权重保留其原有许可。

@@ -1,0 +1,24 @@
+# Build output
+/build/
+/build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# Local model artifacts (produced by scripts/, not distributed)
+/models/
+/work/
+*.gguf
+*.safetensors
+*.f32
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
