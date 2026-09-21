@@ -14,6 +14,7 @@ struct http_options {
     std::string model = "dohnuts";
     std::string backend;
     std::string api_key;
+    std::string cors_origin = "*"; // Access-Control-Allow-Origin; empty disables CORS.
     size_t max_questions = 8;
     size_t max_batch_questions = 0; // 0 uses max_questions.
     size_t max_pending_requests = 32; // Includes active inference.

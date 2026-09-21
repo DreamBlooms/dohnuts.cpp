@@ -4,10 +4,10 @@ English | [简体中文](README.zh-CN.md)
 
 **The same decisions, on CPU.**
 
-Dohnuts inference in native C++ on [llama.cpp](third_party/llama.cpp). It runs
-the released Qwen3.5-0.8B base with the merged Dohnuts LoRA, scores candidate
-markers with the scalar decision head, and returns probabilities from a single
-forward pass. No GPU, no generation.
+Native C++ inference for [Dohnuts](https://github.com/PsiACE/dohnuts), built on
+[llama.cpp](third_party/llama.cpp). It runs the released Qwen3.5-0.8B base with
+the merged Dohnuts LoRA, scores candidate markers with the scalar decision head,
+and returns probabilities from a single forward pass. No GPU, no generation.
 
 Dohnuts 0.1.0 is text-only. The released adapter carries language LoRA and the
 scorer head, and no vision weights.
@@ -42,9 +42,11 @@ curl http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' \
  "usage":{"input_tokens":93,"images":0}}
 ```
 
-`choice`, `score`, and `noul` behave as in [Dohnuts](../dohnuts). `/predict`
-takes one request or an array; `/health` and `/v1/models` describe the server.
-Pass `--api-key KEY` to require `Authorization: Bearer KEY` on predictions.
+`choice`, `score`, and `noul` behave as in
+[Dohnuts](https://github.com/PsiACE/dohnuts). `/predict` takes one request or an
+array; `/health` and `/v1/models` describe the server. Pass `--api-key KEY` to
+require `Authorization: Bearer KEY` on predictions. CORS is open to any origin by
+default; set `--cors-origin ORIGIN` to restrict it.
 
 Run the CLI on a file of requests with `--input requests.jsonl`, or add `--raw`
 to print uncalibrated scorer logits.
@@ -62,7 +64,27 @@ cmake --build build -j --target dohnuts-cli
 llama.cpp is pinned to release `v0.4.1` as a submodule. `-DLLAMA_DIR=...`
 points the build at another checkout.
 
-## Prepare the model
+## Models
+
+Pre-converted GGUF files are published at
+[DreamBlooms/Dohnuts-0.1.0-0.8B-GGUF](https://huggingface.co/DreamBlooms/Dohnuts-0.1.0-0.8B-GGUF):
+
+| File | Quantization |
+| --- | --- |
+| `Dohnuts-0.1.0-0.8B-f16.gguf` | F16 |
+| `Dohnuts-0.1.0-0.8B-Q8_0.gguf` | Q8_0 |
+| `Dohnuts-0.1.0-0.8B-Q6_K.gguf` | Q6_K |
+| `Dohnuts-0.1.0-0.8B-Q4_K_M.gguf` | Q4_K_M |
+
+`head.f32` (the scorer head) and `dohnuts.json` (calibration) are required
+alongside any GGUF. Download one quantization plus both small files:
+
+```sh
+hf download DreamBlooms/Dohnuts-0.1.0-0.8B-GGUF \
+  Dohnuts-0.1.0-0.8B-Q8_0.gguf head.f32 dohnuts.json --local-dir models
+```
+
+## Build the GGUF yourself
 
 The release ships a compact checkpoint, not a standalone language model. Merge
 it into the base once, then convert and quantize:

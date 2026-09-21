@@ -4,9 +4,10 @@
 
 **同样的决策，纯 CPU 运行。**
 
-用原生 C++ 在 [llama.cpp](third_party/llama.cpp) 上运行 Dohnuts 推理。加载已发布的
-Qwen3.5-0.8B 基座与合并后的 Dohnuts LoRA，用标量决策头对候选标记打分，单次前向返回
-概率分布。不需要 GPU，也不生成文本。
+用原生 C++ 在 [llama.cpp](third_party/llama.cpp) 上运行
+[Dohnuts](https://github.com/PsiACE/dohnuts) 推理。加载已发布的 Qwen3.5-0.8B 基座与
+合并后的 Dohnuts LoRA，用标量决策头对候选标记打分，单次前向返回概率分布。不需要 GPU，
+也不生成文本。
 
 Dohnuts 0.1.0 是纯文本模型。发布的 adapter 只包含语言 LoRA 和打分头，没有视觉权重。
 
@@ -40,9 +41,10 @@ curl http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' \
  "usage":{"input_tokens":93,"images":0}}
 ```
 
-`choice`、`score`、`noul` 的语义与 [Dohnuts](../dohnuts) 一致。`/predict` 接受单个请求或
-数组；`/health` 和 `/v1/models` 描述服务状态。加 `--api-key KEY` 后，预测接口需要
-`Authorization: Bearer KEY`。
+`choice`、`score`、`noul` 的语义与 [Dohnuts](https://github.com/PsiACE/dohnuts) 一致。
+`/predict` 接受单个请求或数组；`/health` 和 `/v1/models` 描述服务状态。加
+`--api-key KEY` 后，预测接口需要 `Authorization: Bearer KEY`。CORS 默认允许任意来源，
+用 `--cors-origin ORIGIN` 可限制。
 
 用 `--input requests.jsonl` 可以对文件逐行跑 CLI；加 `--raw` 则输出未校准的打分 logits。
 
@@ -58,7 +60,27 @@ cmake --build build -j --target dohnuts-cli
 
 llama.cpp 以子模块固定在发行版 `v0.4.1`。用 `-DLLAMA_DIR=...` 可指向其他 checkout。
 
-## 准备模型
+## 模型
+
+预转换好的 GGUF 发布在
+[DreamBlooms/Dohnuts-0.1.0-0.8B-GGUF](https://huggingface.co/DreamBlooms/Dohnuts-0.1.0-0.8B-GGUF)：
+
+| 文件 | 量化 |
+| --- | --- |
+| `Dohnuts-0.1.0-0.8B-f16.gguf` | F16 |
+| `Dohnuts-0.1.0-0.8B-Q8_0.gguf` | Q8_0 |
+| `Dohnuts-0.1.0-0.8B-Q6_K.gguf` | Q6_K |
+| `Dohnuts-0.1.0-0.8B-Q4_K_M.gguf` | Q4_K_M |
+
+`head.f32`（打分头）和 `dohnuts.json`（校准）是任何 GGUF 都必须搭配的文件。下载一个
+量化版本加这两个小文件：
+
+```sh
+hf download DreamBlooms/Dohnuts-0.1.0-0.8B-GGUF \
+  Dohnuts-0.1.0-0.8B-Q8_0.gguf head.f32 dohnuts.json --local-dir models
+```
+
+## 自己构建 GGUF
 
 发布的是紧凑 checkpoint，不是独立的语言模型。先合并到基座，再转换与量化：
 

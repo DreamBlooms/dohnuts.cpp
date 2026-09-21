@@ -76,6 +76,16 @@ struct http_server::impl {
         server.set_keep_alive_max_count(100);
         server.set_pre_routing_handler([this](const auto& request, auto& response) {
             response.set_header("x-typesafe-request-id", "dohnuts-" + std::to_string(++request_id));
+            if (!options.cors_origin.empty()) {
+                response.set_header("Access-Control-Allow-Origin", options.cors_origin);
+                response.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                response.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                response.set_header("Access-Control-Max-Age", "86400");
+            }
+            if (request.method == "OPTIONS") {
+                response.status = 204;
+                return httplib::Server::HandlerResponse::Handled;
+            }
             if (request.path != "/health" && !options.api_key.empty() &&
                 request.get_header_value("Authorization") != "Bearer " + options.api_key) {
                 response.set_header("WWW-Authenticate", "Bearer");

@@ -22,6 +22,7 @@ struct options {
     std::string metadata;   // dohnuts.json
     std::string input;      // JSONL file for CLI mode
     std::string api_key;
+    std::string cors_origin = "*";
     int threads = 0;
     size_t max_questions = 8;
     bool batching = true;
@@ -43,8 +44,8 @@ json temperatures_from(const json & metadata) {
 
 void usage() {
     std::cerr << "usage: dohnuts-cli --model M.gguf --head head.f32 --metadata dohnuts.json "
-                 "[--server --host H --port P --api-key K --max-questions N --no-batching | "
-                 "--input requests.jsonl [--raw]]\n";
+                 "[--server --host H --port P --api-key K --cors-origin ORIGIN "
+                 "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n";
 }
 
 } // namespace
@@ -66,6 +67,7 @@ int main(int argc, char ** argv) {
             else if (arg == "--metadata") opts.metadata = next();
             else if (arg == "--input") opts.input = next();
             else if (arg == "--api-key") opts.api_key = next();
+            else if (arg == "--cors-origin") opts.cors_origin = next();
             else if (arg == "--threads") opts.threads = std::stoi(next());
             else if (arg == "--max-questions") opts.max_questions = std::stoul(next());
             else if (arg == "--no-batching") opts.batching = false;
@@ -93,6 +95,7 @@ int main(int argc, char ** argv) {
             http.model = "dohnuts";
             http.backend = eng.backend_name();
             http.api_key = opts.api_key;
+            http.cors_origin = opts.cors_origin;
             http.max_questions = opts.max_questions;
             http.batching = opts.batching;
             return dohnuts::serve_http(http, [&](const json & requests) {
