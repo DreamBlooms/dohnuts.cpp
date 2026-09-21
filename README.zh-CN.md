@@ -114,6 +114,33 @@ Qwen3.5 是混合架构：18 层 gated delta net + 6 层全注意力。CPU 上�
 八线程 prefill 约 21 tokens/s，一个两问题的请求需要数秒。Dohnuts 从不生成 token，
 所以只有 prefill 有意义。数值会随主机负载波动，稳定参考请用 `llama-bench`。
 
+## GPU
+
+默认只编译 CPU。CUDA、Vulkan、ROCm（HIP）、Metal 是可选后端，配置时选一个开启：
+
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_CUDA=ON     # NVIDIA
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_VULKAN=ON   # AMD 或 Intel
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_HIP=ON      # AMD ROCm
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_METAL=ON    # Apple
+cmake --build build -j --target dohnuts-cli
+```
+
+各后端需要各自的工具链：CUDA 需要 CUDA Toolkit，Vulkan 需要 Vulkan SDK（`glslc` 与
+loader），HIP 需要 ROCm，Metal 需要 Xcode 命令行工具。交叉编译时用
+`-DCMAKE_CUDA_ARCHITECTURES=89`（CUDA）或 `-DGPU_TARGETS=gfx1100`（HIP）指定目标 GPU。
+
+运行时卸载到 GPU：
+
+```sh
+build/dohnuts-cli --model Dohnuts-0.1.0-0.8B-Q8_0.gguf --head head.f32 \
+  --metadata dohnuts.json --gpu-layers -1
+```
+
+`--gpu-layers -1` 把全部层放进显存，正数表示放多少层。`--device CUDA0` 或用逗号分隔的
+列表选择设备；`--list-devices` 打印当前构建可用的设备。纯 CPU 构建会忽略
+`--gpu-layers`，所以同一条命令在任何构建下都能用。
+
 ## 实现方式
 
 Dohnuts 在每个候选标记处取 post-norm 隐状态，乘一个标量头，再按问题做温度缩放 softmax。

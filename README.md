@@ -122,6 +122,36 @@ threads and a two-question request takes a few seconds. Dohnuts never generates
 tokens, so only prefill matters. Numbers vary with host load; use `llama-bench`
 for a stable reference.
 
+## GPU
+
+The default build is CPU only. CUDA, Vulkan, ROCm (HIP), and Metal are optional
+backends; enable one at configure time:
+
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_CUDA=ON     # NVIDIA
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_VULKAN=ON   # AMD or Intel
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_HIP=ON      # AMD ROCm
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_METAL=ON    # Apple
+cmake --build build -j --target dohnuts-cli
+```
+
+Each backend needs its own toolchain: the CUDA Toolkit for CUDA, the Vulkan SDK
+(`glslc` and the loader) for Vulkan, ROCm for HIP, and the Xcode command line
+tools for Metal. When cross-compiling, pin the target GPU with
+`-DCMAKE_CUDA_ARCHITECTURES=89` (CUDA) or `-DGPU_TARGETS=gfx1100` (HIP).
+
+Offload at runtime:
+
+```sh
+build/dohnuts-cli --model Dohnuts-0.1.0-0.8B-Q8_0.gguf --head head.f32 \
+  --metadata dohnuts.json --gpu-layers -1
+```
+
+`--gpu-layers -1` keeps every layer in VRAM; a positive number keeps that many.
+`--device CUDA0` or a comma-separated list selects devices. `--list-devices`
+prints what the build can use. A CPU-only build ignores `--gpu-layers`, so the
+same command line works everywhere.
+
 ## How it works
 
 Dohnuts reads the post-norm hidden state at each candidate marker, applies one

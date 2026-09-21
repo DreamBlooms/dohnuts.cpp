@@ -19,6 +19,26 @@ set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+
+# Optional GPU backends. The default build is CPU only. Enable one or more to
+# offload with --gpu-layers; see the README for per-backend requirements.
+option(DOHNUTS_CUDA   "Build with the CUDA backend"   OFF)
+option(DOHNUTS_VULKAN "Build with the Vulkan backend" OFF)
+option(DOHNUTS_HIP    "Build with the ROCm/HIP backend" OFF)
+option(DOHNUTS_METAL  "Build with the Metal backend"  OFF)
+if(DOHNUTS_CUDA)
+    set(GGML_CUDA ON CACHE BOOL "" FORCE)
+endif()
+if(DOHNUTS_VULKAN)
+    set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+endif()
+if(DOHNUTS_HIP)
+    set(GGML_HIP ON CACHE BOOL "" FORCE)
+endif()
+if(DOHNUTS_METAL)
+    set(GGML_METAL ON CACHE BOOL "" FORCE)
+endif()
+
 add_subdirectory("${LLAMA_DIR}" "${CMAKE_BINARY_DIR}/llama.cpp")
 
 find_package(nlohmann_json 3.11 REQUIRED)

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <thread>
 
@@ -30,7 +31,25 @@ std::vector<float> read_head(const std::filesystem::path & path, int expected) {
     return values;
 }
 
+std::string trim(const std::string & value) {
+    const auto first = value.find_first_not_of(" \t");
+    if (first == std::string::npos) return "";
+    const auto last = value.find_last_not_of(" \t");
+    return value.substr(first, last - first + 1);
+}
+
 } // namespace
+
+std::vector<std::string> available_devices() {
+    std::vector<std::string> names;
+    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+        ggml_backend_dev_t device = ggml_backend_dev_get(i);
+        const char * name = ggml_backend_dev_name(device);
+        const char * description = ggml_backend_dev_description(device);
+        names.push_back(std::string(name ? name : "?") + " - " + (description ? description : ""));
+    }
+    return names;
+}
 
 struct engine::impl {
     llama_model * model = nullptr;
@@ -38,6 +57,8 @@ struct engine::impl {
     const llama_vocab * vocab = nullptr;
     int marker = -1;
     int hidden = 0;
+    int gpu_layers = 0;
+    std::vector<ggml_backend_dev_t> devices; // must outlive the model
     std::vector<float> head;
 
     ~impl() {
@@ -49,7 +70,22 @@ struct engine::impl {
         llama_backend_init();
 
         auto mparams = llama_model_default_params();
-        mparams.n_gpu_layers = 0;
+        mparams.n_gpu_layers = options.gpu_layers;
+        if (!options.device.empty()) {
+            std::stringstream stream(options.device);
+            std::string name;
+            while (std::getline(stream, name, ',')) {
+                name = trim(name);
+                if (name.empty()) continue;
+                ggml_backend_dev_t device = ggml_backend_dev_by_name(name.c_str());
+                if (!device) throw std::runtime_error("Unknown device: " + name);
+                devices.push_back(device);
+            }
+            if (devices.empty()) throw std::runtime_error("No valid device in --device");
+            devices.push_back(nullptr);
+            mparams.devices = devices.data();
+        }
+        gpu_layers = options.gpu_layers;
         model = llama_model_load_from_file(options.model.c_str(), mparams);
         if (!model) throw std::runtime_error("Cannot load model: " + options.model.string());
 
@@ -108,6 +144,19 @@ std::string engine::backend_name() const {
     char buf[256] = {};
     llama_model_desc(p->model, buf, sizeof(buf));
     return buf;
+}
+
+std::string engine::device_name() const {
+    if (p->gpu_layers == 0) return "CPU";
+    if (!p->devices.empty()) {
+        std::string names;
+        for (size_t i = 0; p->devices[i] != nullptr; ++i) {
+            if (!names.empty()) names += ",";
+            names += ggml_backend_dev_name(p->devices[i]);
+        }
+        return names;
+    }
+    return "GPU (n_gpu_layers=" + std::to_string(p->gpu_layers) + ")";
 }
 
 std::vector<engine::row_result> engine::score(

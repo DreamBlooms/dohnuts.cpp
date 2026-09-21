@@ -23,10 +23,13 @@ struct options {
     std::string input;      // JSONL file for CLI mode
     std::string api_key;
     std::string cors_origin = "*";
+    std::string device;
     int threads = 0;
+    int gpu_layers = 0;
     size_t max_questions = 8;
     bool batching = true;
     bool raw = false;
+    bool list_devices = false;
 };
 
 json load_json(const std::string & path) {
@@ -44,8 +47,10 @@ json temperatures_from(const json & metadata) {
 
 void usage() {
     std::cerr << "usage: dohnuts-cli --model M.gguf --head head.f32 --metadata dohnuts.json "
+                 "[--gpu-layers N] [--device NAME[,NAME]] [--threads N] "
                  "[--server --host H --port P --api-key K --cors-origin ORIGIN "
-                 "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n";
+                 "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n"
+                 "       dohnuts-cli --list-devices\n";
 }
 
 } // namespace
@@ -69,10 +74,17 @@ int main(int argc, char ** argv) {
             else if (arg == "--api-key") opts.api_key = next();
             else if (arg == "--cors-origin") opts.cors_origin = next();
             else if (arg == "--threads") opts.threads = std::stoi(next());
+            else if (arg == "--gpu-layers") opts.gpu_layers = std::stoi(next());
+            else if (arg == "--device") opts.device = next();
             else if (arg == "--max-questions") opts.max_questions = std::stoul(next());
             else if (arg == "--no-batching") opts.batching = false;
             else if (arg == "--raw") opts.raw = true;
+            else if (arg == "--list-devices") opts.list_devices = true;
             else { usage(); return 2; }
+        }
+        if (opts.list_devices) {
+            for (const auto & name : dohnuts::available_devices()) std::cout << name << '\n';
+            return 0;
         }
         if (opts.model.empty() || opts.head.empty() || opts.metadata.empty()) {
             usage();
@@ -83,6 +95,8 @@ int main(int argc, char ** argv) {
         engine_opts.model = opts.model;
         engine_opts.head = opts.head;
         engine_opts.threads = opts.threads;
+        engine_opts.gpu_layers = opts.gpu_layers;
+        engine_opts.device = opts.device;
         dohnuts::engine eng(engine_opts);
 
         const json metadata = load_json(opts.metadata);
@@ -93,7 +107,7 @@ int main(int argc, char ** argv) {
             http.host = opts.host;
             http.port = opts.port;
             http.model = "dohnuts";
-            http.backend = eng.backend_name();
+            http.backend = eng.backend_name() + " on " + eng.device_name();
             http.api_key = opts.api_key;
             http.cors_origin = opts.cors_origin;
             http.max_questions = opts.max_questions;

@@ -15,9 +15,14 @@ using json = nlohmann::ordered_json;
 struct engine_options {
     std::filesystem::path model;
     std::filesystem::path head;
-    int threads = 0;      // 0 uses the llama.cpp default.
-    int n_batch = 2048;   // Max tokens decoded in one pass.
+    int threads = 0;        // 0 uses the llama.cpp default.
+    int n_batch = 2048;     // Max tokens decoded in one pass.
+    int gpu_layers = 0;     // Layers kept in VRAM; 0 is CPU only, negative is all.
+    std::string device;     // Comma-separated ggml device names; empty uses the default.
 };
+
+// Names of the compute devices compiled into this build, for --list-devices.
+std::vector<std::string> available_devices();
 
 class engine {
 public:
@@ -41,6 +46,7 @@ public:
     int marker_id() const;
     int max_length() const;
     std::string backend_name() const;
+    std::string device_name() const; // "CPU" or the offloaded devices.
 
 private:
     struct impl;
