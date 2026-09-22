@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <list>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -81,10 +82,46 @@ struct engine::impl {
     std::vector<ggml_backend_dev_t> devices; // must outlive the model
     std::vector<float> head;
 
+    // Cross-request cache of encoded image features, keyed by image id
+    // (SHA-256). Bounded like the Python 128 MiB LRU. The list front is the
+    // most recently used entry.
+    struct image_cache_entry {
+        std::vector<float> embeddings;
+        size_t bytes = 0;
+    };
+    std::list<std::pair<std::string, image_cache_entry>> image_cache;
+    size_t image_cache_bytes = 0;
+    static constexpr size_t IMAGE_CACHE_LIMIT = 128u * 1024 * 1024;
+
     ~impl() {
         if (mtmd) mtmd_free(mtmd);
         if (ctx) llama_free(ctx);
         if (model) llama_model_free(model);
+    }
+
+    // Returns the cached embeddings for id, or nullptr. Moves a hit to the
+    // front of the LRU list.
+    std::vector<float> * image_cache_get(const std::string & id) {
+        for (auto it = image_cache.begin(); it != image_cache.end(); ++it) {
+            if (it->first == id) {
+                image_cache.splice(image_cache.begin(), image_cache, it);
+                return &image_cache.front().second.embeddings;
+            }
+        }
+        return nullptr;
+    }
+
+    std::vector<float> & image_cache_put(const std::string & id, std::vector<float> embd) {
+        image_cache_entry entry;
+        entry.bytes = embd.size() * sizeof(float);
+        entry.embeddings = std::move(embd);
+        image_cache_bytes += entry.bytes;
+        image_cache.emplace_front(id, std::move(entry));
+        while (image_cache_bytes > IMAGE_CACHE_LIMIT && image_cache.size() > 1) {
+            image_cache_bytes -= image_cache.back().second.bytes;
+            image_cache.pop_back();
+        }
+        return image_cache.front().second.embeddings;
     }
 
     void load(const engine_options & options) {
@@ -224,7 +261,6 @@ std::vector<engine::row_result> engine::score(
     // decoded together: the leading text and image run once and are copied to
     // the other sequences, so the vision tokens hit the language model once per
     // request instead of once per question.
-    std::map<std::string, std::vector<float>> image_cache;
     size_t start = 0;
     while (start < rows) {
         const bool image_row = !images.empty() && images[start] != nullptr;
@@ -233,7 +269,7 @@ std::vector<engine::row_result> engine::score(
             while (count < MAX_SEQS && start + count < rows && images[start + count] != nullptr &&
                    images[start + count].get() == images[start].get())
                 ++count;
-            score_image_group(prompts, labels, start, count, images, results, image_cache);
+            score_image_group(prompts, labels, start, count, images, results);
             start += count;
             continue;
         }
@@ -274,8 +310,7 @@ void engine::score_image_group(const std::vector<std::string> & prompts,
                                const std::vector<std::vector<std::string>> & labels,
                                size_t start, size_t count,
                                const std::vector<encoded_image> & images,
-                               std::vector<row_result> & results,
-                               std::map<std::string, std::vector<float>> & image_cache) {
+                               std::vector<row_result> & results) {
     if (!p->mtmd) throw std::invalid_argument("Image input requires an mmproj (--mmproj)");
     if (count == 0) return;
 
@@ -397,16 +432,14 @@ void engine::score_image_group(const std::vector<std::string> & prompts,
         }
         {
             const mtmd_input_chunk * chunk = mtmd_input_chunks_get(chunks[0], image_index[0]);
-            std::vector<float> * encoded = nullptr;
-            auto cached = image_cache.find(key);
-            if (cached != image_cache.end()) encoded = &cached->second;
+            std::vector<float> * encoded = p->image_cache_get(key);
             if (!encoded) {
                 if (mtmd_encode_chunk(p->mtmd, chunk) != 0) fail("Image encoding failed");
                 const int n_embd = llama_model_n_embd_inp(p->model);
                 const size_t n = (size_t) n_embd * mtmd_input_chunk_get_n_tokens(chunk);
                 const float * out = mtmd_get_output_embd(p->mtmd);
                 if (!out) fail("Image embeddings unavailable");
-                encoded = &image_cache.emplace(key, std::vector<float>(out, out + n)).first->second;
+                encoded = &p->image_cache_put(key, std::vector<float>(out, out + n));
             }
             if (mtmd_helper_decode_image_chunk(p->mtmd, p->ctx, chunk, encoded->data(), n_past, 0,
                                                p->n_batch, &n_past, nullptr, nullptr) != 0)

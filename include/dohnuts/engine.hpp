@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -70,14 +69,11 @@ private:
     // Scores rows [start, start+count) that share one image. The leading text
     // and image are decoded once into sequence 0 and copied to the other
     // sequences, mirroring the Python prefix sharing.
-    // image_cache maps an image id (SHA-256) to its encoded embeddings, so a
-    // shared image is encoded once per score() call.
     void score_image_group(const std::vector<std::string> & prompts,
                            const std::vector<std::vector<std::string>> & labels,
                            size_t start, size_t count,
                            const std::vector<encoded_image> & images,
-                           std::vector<row_result> & results,
-                           std::map<std::string, std::vector<float>> & image_cache);
+                           std::vector<row_result> & results);
     void decode_pass(const std::vector<std::vector<int32_t>> & token_rows,
                      const std::vector<std::vector<int>> & marker_pos,
                      size_t start, size_t count,
