@@ -52,6 +52,16 @@ curl http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' \
 
 需要 CMake 3.14+、支持 C++20 的编译器，以及 `nlohmann-json3-dev`。
 
+在 Ubuntu / Debian 上，下面两个脚本会安装依赖并编译 CLI（多余参数会转交给
+CMake，例如指定 GPU 后端）：
+
+```sh
+sudo scripts/setup.sh
+scripts/build.sh
+```
+
+手动构建：
+
 ```sh
 git submodule update --init --depth 1
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON

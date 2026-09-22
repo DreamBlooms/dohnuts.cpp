@@ -55,6 +55,16 @@ to print uncalibrated scorer logits.
 
 Requires CMake 3.14+, a C++20 compiler, and `nlohmann-json3-dev`.
 
+On Ubuntu / Debian the two scripts below install the dependencies and build the
+CLI (extra CMake arguments are forwarded, e.g. a GPU backend):
+
+```sh
+sudo scripts/setup.sh
+scripts/build.sh
+```
+
+Manual build:
+
 ```sh
 git submodule update --init --depth 1
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON
