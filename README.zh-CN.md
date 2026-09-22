@@ -50,7 +50,7 @@ curl http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' \
 
 ## 构建
 
-需要 CMake 3.14+、支持 C++20 的编译器，以及 `nlohmann-json3-dev`。
+需要 CMake 3.14+ 和支持 C++20 的编译器。
 
 在 Ubuntu / Debian 上，下面两个脚本会安装依赖并编译 CLI（多余参数会转交给
 CMake，例如指定 GPU 后端）：
@@ -69,6 +69,16 @@ cmake --build build -j --target dohnuts-cli
 ```
 
 llama.cpp 以子模块固定在发行版 `v0.4.1`。用 `-DLLAMA_DIR=...` 可指向其他 checkout。
+
+### Windows（交叉编译）
+
+在 Ubuntu / Debian 上用 MinGW-w64 交叉编译出独立的 `dohnuts-cli.exe`
+（无需额外 DLL）：
+
+```sh
+sudo scripts/setup.sh --with-mingw
+scripts/build_windows.sh
+```
 
 ## 模型
 
@@ -173,10 +183,13 @@ Norm 权重按 `weight + 1` 存储，与 Dohnuts 的融合算子一致。
 ```
 include/dohnuts/engine.hpp    引擎接口
 include/dohnuts/protocol.hpp  提示渲染、校准、predictor
+include/dohnuts/http.hpp      HTTP 传输层
 src/engine.cpp                llama.cpp 封装：加载、tokenize、批量打分
 src/protocol.cpp              Dohnuts 模板与答案
+src/http.cpp                  服务路由与 CORS
 src/main.cpp                  CLI 与 HTTP 服务
-scripts/                      模型导出与 GGUF 构建
+scripts/                      环境安装、原生/Windows 构建、模型导出与 GGUF
+cmake/                        MinGW-w64 交叉工具链
 ```
 
 ## 许可证

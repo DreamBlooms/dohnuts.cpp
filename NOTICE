@@ -16,6 +16,10 @@ cpp-httplib is vendored as a single header (third_party/httplib.h) and is
 licensed under MIT.
 https://github.com/yhirose/cpp-httplib
 
+nlohmann/json is vendored as a single header (third_party/nlohmann/json.hpp)
+and is licensed under MIT.
+https://github.com/nlohmann/json
+
 llama.cpp is used as a pinned submodule and is licensed under MIT.
 https://github.com/ggml-org/llama.cpp
 

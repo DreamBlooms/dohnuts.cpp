@@ -31,6 +31,13 @@ std::vector<float> read_head(const std::filesystem::path & path, int expected) {
     return values;
 }
 
+// llama.cpp takes UTF-8 paths; std::filesystem::path::c_str() is wchar_t on
+// Windows, so convert explicitly.
+std::string to_utf8(const std::filesystem::path & path) {
+    const auto utf8 = path.u8string();
+    return std::string(utf8.begin(), utf8.end());
+}
+
 std::string trim(const std::string & value) {
     const auto first = value.find_first_not_of(" \t");
     if (first == std::string::npos) return "";
@@ -86,7 +93,7 @@ struct engine::impl {
             mparams.devices = devices.data();
         }
         gpu_layers = options.gpu_layers;
-        model = llama_model_load_from_file(options.model.c_str(), mparams);
+        model = llama_model_load_from_file(to_utf8(options.model).c_str(), mparams);
         if (!model) throw std::runtime_error("Cannot load model: " + options.model.string());
 
         vocab = llama_model_get_vocab(model);

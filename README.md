@@ -53,7 +53,7 @@ to print uncalibrated scorer logits.
 
 ## Build
 
-Requires CMake 3.14+, a C++20 compiler, and `nlohmann-json3-dev`.
+Requires CMake 3.14+ and a C++20 compiler.
 
 On Ubuntu / Debian the two scripts below install the dependencies and build the
 CLI (extra CMake arguments are forwarded, e.g. a GPU backend):
@@ -73,6 +73,16 @@ cmake --build build -j --target dohnuts-cli
 
 llama.cpp is pinned to release `v0.4.1` as a submodule. `-DLLAMA_DIR=...`
 points the build at another checkout.
+
+### Windows (cross-compile)
+
+From Ubuntu / Debian, MinGW-w64 cross-compiles a self-contained
+`dohnuts-cli.exe` (no extra DLLs):
+
+```sh
+sudo scripts/setup.sh --with-mingw
+scripts/build_windows.sh
+```
 
 ## Models
 
@@ -185,10 +195,13 @@ Norm weights are stored as `weight + 1`, matching the Dohnuts fused kernels.
 ```
 include/dohnuts/engine.hpp    engine interface
 include/dohnuts/protocol.hpp  prompt rendering, calibration, predictor
+include/dohnuts/http.hpp      HTTP transport
 src/engine.cpp                llama.cpp wrapper: load, tokenize, batched scoring
 src/protocol.cpp              Dohnuts templates and answers
+src/http.cpp                  server routes and CORS
 src/main.cpp                  CLI and HTTP server
-scripts/                      model export and GGUF build
+scripts/                      setup, native/Windows builds, model export, GGUF
+cmake/                        MinGW-w64 cross toolchain
 ```
 
 ## License
