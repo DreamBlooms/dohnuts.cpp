@@ -39,4 +39,9 @@ cmake -S "$ROOT" -B "$BUILD" \
 echo "==> building"
 cmake --build "$BUILD" -j"$(nproc)"
 
+if [ -f "$BUILD/dohnuts-cli.exe" ]; then
+    echo "==> stripping debug symbols"
+    x86_64-w64-mingw32-strip --strip-all "$BUILD/dohnuts-cli.exe"
+fi
+
 echo "==> done: $BUILD/dohnuts-cli.exe"

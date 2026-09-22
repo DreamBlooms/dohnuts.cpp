@@ -20,7 +20,8 @@ struct http_options {
     size_t max_pending_requests = 32; // Includes active inference.
     unsigned batch_wait_ms = 2;
     bool batching = true;
-    size_t max_body_bytes = 1024 * 1024;
+    // Generous enough for a base64-encoded image (about 8 MiB decoded).
+    size_t max_body_bytes = 12 * 1024 * 1024;
 };
 
 // The callback accepts an array and returns the native prediction array.

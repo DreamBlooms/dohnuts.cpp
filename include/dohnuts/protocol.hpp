@@ -34,6 +34,9 @@ public:
     // Accepts an array of requests and returns the native answer array.
     json predict(const json & requests, bool raw = false);
 
+// True when the engine can score image inputs.
+    bool supports_vision() const { return eng.supports_vision(); }
+
 private:
     engine & eng;
     json temperatures;

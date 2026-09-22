@@ -19,6 +19,7 @@ struct options {
     int port = 8080;
     std::string model;
     std::string head;
+    std::string mmproj;     // vision encoder; enables image input
     std::string metadata;   // dohnuts.json
     std::string input;      // JSONL file for CLI mode
     std::string api_key;
@@ -47,6 +48,7 @@ json temperatures_from(const json & metadata) {
 
 void usage() {
     std::cerr << "usage: dohnuts-cli --model M.gguf --head head.f32 --metadata dohnuts.json "
+                 "[--mmproj MMPROJ.gguf] "
                  "[--gpu-layers N] [--device NAME[,NAME]] [--threads N] "
                  "[--server --host H --port P --api-key K --cors-origin ORIGIN "
                  "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n"
@@ -69,6 +71,7 @@ int main(int argc, char ** argv) {
             else if (arg == "--port") opts.port = std::stoi(next());
             else if (arg == "--model") opts.model = next();
             else if (arg == "--head") opts.head = next();
+            else if (arg == "--mmproj") opts.mmproj = next();
             else if (arg == "--metadata") opts.metadata = next();
             else if (arg == "--input") opts.input = next();
             else if (arg == "--api-key") opts.api_key = next();
@@ -94,6 +97,7 @@ int main(int argc, char ** argv) {
         dohnuts::engine_options engine_opts;
         engine_opts.model = opts.model;
         engine_opts.head = opts.head;
+        engine_opts.mmproj = opts.mmproj;
         engine_opts.threads = opts.threads;
         engine_opts.gpu_layers = opts.gpu_layers;
         engine_opts.device = opts.device;

@@ -9,7 +9,8 @@
 合并后的 Dohnuts LoRA，用标量决策头对候选标记打分，单次前向返回概率分布。不需要 GPU，
 也不生成文本。
 
-Dohnuts 0.1.0 是纯文本模型。发布的 adapter 只包含语言 LoRA 和打分头，没有视觉权重。
+发布的 adapter 只包含语言 LoRA 和打分头。基座本身还带有冻结的视觉塔，因此额外提供一个
+mmproj 文件后，同一套 API 即可接受每请求一张图片（见[视觉](#视觉)）。
 
 ## 一条消息，多个决策
 
@@ -91,6 +92,7 @@ scripts/build_windows.sh
 | `Dohnuts-0.1.0-0.8B-Q8_0.gguf` | Q8_0 |
 | `Dohnuts-0.1.0-0.8B-Q6_K.gguf` | Q6_K |
 | `Dohnuts-0.1.0-0.8B-Q4_K_M.gguf` | Q4_K_M |
+| `mmproj-dohnuts-0.1.0-bf16.gguf` | 视觉塔（BF16，可选） |
 
 `head.f32`（打分头）和 `dohnuts.json`（校准）是任何 GGUF 都必须搭配的文件。下载一个
 量化版本加这两个小文件：
@@ -114,6 +116,34 @@ scripts/build_gguf.sh work/merged work
 ```
 
 会生成 `dohnuts-f16.gguf`、`dohnuts-Q8_0.gguf`、`dohnuts-Q4_K_M.gguf`。
+
+## 视觉
+
+Qwen3.5 基座保留了视觉塔，而 Dohnuts LoRA 只调整语言侧，所以无需重训即可做图像决策。
+视觉塔单独发布为 `mmproj-dohnuts-0.1.0-bf16.gguf`，用 `--mmproj` 传入：
+
+```sh
+build/dohnuts-cli --server --port 8080 \
+  --model work/dohnuts-Q8_0.gguf --head work/head.f32 \
+  --metadata models/dohnuts-0.1.0/dohnuts.json \
+  --mmproj work/mmproj-dohnuts-0.1.0-bf16.gguf
+```
+
+把一张图片以 base64 PNG/JPEG data URL 放进 `state.image`，其打分方式与 Python 的
+`state["image"]` 完全一致，并且该 key 会从文本 state 中剔除：
+
+```sh
+curl http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' \
+  -d '{"state":{"image":"data:image/png;base64,iVBORw0KG..."},
+       "questions":{"shape":{"type":"choice","criteria":["square","circle"]}}}'
+```
+
+图像请求的 `usage.images` 为 1，否则为 0。每请求只支持一张图片，与 Dohnuts 一致。不加
+`--mmproj` 时，任何图像请求都会被拒绝。
+
+CPU 上图像开销较大，因此同一张图问多个问题时，图片只编码一次，前导文本与 256 个视觉
+token 也只过一次语言模型，再把这份状态共享给各个问题（与文本路径同一套前缀共享）。
+纯文本请求完全不会触发。图片会缩放到 512x512（256 token），与 Python 预处理一致。
 
 ## 精度
 
@@ -175,6 +205,7 @@ llama.cpp 已支持该架构（`qwen35`），并通过公共 API 暴露了全部
 | 标量打分头 `Linear(1024, 1)` | `engine.cpp` 中 `head.f32` 点积 |
 | 温度 softmax、熵置信度、期望分数 | `protocol.cpp` 的 `calibrate_answer` |
 | 共享输入前缀 | 公共前缀只算一次，再用 `llama_memory_seq_cp` 复用 |
+| 冻结视觉塔 + merger | mtmd 加载 `mmproj-dohnuts-0.1.0-bf16.gguf`，逐图像块注入 M-RoPE 位置 |
 
 Norm 权重按 `weight + 1` 存储，与 Dohnuts 的融合算子一致。
 
@@ -184,7 +215,7 @@ Norm 权重按 `weight + 1` 存储，与 Dohnuts 的融合算子一致。
 include/dohnuts/engine.hpp    引擎接口
 include/dohnuts/protocol.hpp  提示渲染、校准、predictor
 include/dohnuts/http.hpp      HTTP 传输层
-src/engine.cpp                llama.cpp 封装：加载、tokenize、批量打分
+src/engine.cpp                llama.cpp/mtmd 封装：加载、tokenize、批量打分
 src/protocol.cpp              Dohnuts 模板与答案
 src/http.cpp                  服务路由与 CORS
 src/main.cpp                  CLI 与 HTTP 服务

@@ -2,13 +2,56 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
 
 namespace dohnuts {
 namespace {
 
 constexpr const char * MARKER = "<|fim_suffix|>";
-constexpr const char * IMAGE_PREFIX = "";
+
+int base64_value(unsigned char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+// Decodes standard base64 (optionally wrapped in a data: URL), ignoring
+// whitespace. Throws on any invalid character.
+std::vector<uint8_t> decode_base64(const std::string & input) {
+    std::string text = input;
+    const auto comma = text.find(',');
+    if (text.compare(0, 5, "data:") == 0 && comma != std::string::npos)
+        text = text.substr(comma + 1);
+
+    std::vector<uint8_t> out;
+    out.reserve(text.size() / 4 * 3);
+    int buffer = 0;
+    int bits = 0;
+    for (unsigned char c : text) {
+        if (c == '\n' || c == '\r' || c == ' ' || c == '\t') continue;
+        if (c == '=') break;
+        const int value = base64_value(c);
+        if (value < 0) throw std::invalid_argument("Invalid base64 image data");
+        buffer = (buffer << 6) | value;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back((uint8_t) ((buffer >> bits) & 0xFF));
+        }
+    }
+    return out;
+}
+
+std::vector<uint8_t> decode_image_field(const json & value) {
+    if (!value.is_string()) throw std::invalid_argument("state.image must be a data URL string");
+    auto bytes = decode_base64(value.get<std::string>());
+    if (bytes.empty()) throw std::invalid_argument("state.image decoded to no bytes");
+    return bytes;
+}
 
 std::string dump_python(const json & value) {
     if (!value.is_structured()) return value.dump();
@@ -165,6 +208,9 @@ json predictor::predict(const json & requests, bool raw) {
 
     std::vector<std::string> prompts, types;
     std::vector<std::vector<std::string>> labels;
+    std::vector<encoded_image> images;
+    // Per request: token estimate is filled after scoring.
+    std::vector<int> image_flags;
     // (request index, question id).
     std::vector<std::pair<size_t, std::string>> slots;
 
@@ -172,7 +218,27 @@ json predictor::predict(const json & requests, bool raw) {
     for (const auto & request : requests) {
         if (!request.is_object()) throw std::invalid_argument("Request must be an object");
         const json state = request.at("state");
-        const std::string state_text = render(state);
+
+        // The image is a base64 data URL under state.image; it is excluded from
+        // the text state the same way the Python predictor drops state["image"].
+        bool has_image = false;
+        encoded_image image;
+        std::string state_text;
+        if (state.is_object() && state.contains("image") && !state.at("image").is_null()) {
+            if (state.contains("images"))
+                throw std::invalid_argument("Pass one image via state.image");
+            if (!eng.supports_vision())
+                throw std::invalid_argument("Image input requires an mmproj (--mmproj)");
+            auto bytes = decode_image_field(state.at("image"));
+            image = std::make_shared<const std::vector<uint8_t>>(std::move(bytes));
+            has_image = true;
+            json rest = state;
+            rest.erase("image");
+            state_text = render(rest);
+        } else {
+            state_text = render(state);
+        }
+
         const json questions = request.at("questions");
         if (!questions.is_object() || questions.empty())
             throw std::invalid_argument("questions must be a nonempty object");
@@ -181,14 +247,18 @@ json predictor::predict(const json & requests, bool raw) {
             prompts.push_back(std::move(content));
             types.push_back(it.value().at("type").get<std::string>());
             labels.push_back(std::move(option_labels));
+            images.push_back(image);
+            image_flags.push_back(has_image ? 1 : 0);
             slots.emplace_back(output.size(), it.key());
         }
         output.push_back({{"model", "dohnuts"},
                           {"answers", json::object()},
-                          {"usage", {{"input_tokens", 0}, {"images", 0}}}});
+                          {"usage", {{"input_tokens", 0}, {"images", has_image ? 1 : 0}}}});
     }
 
-    auto results = eng.score(prompts, types, labels);
+    const bool any_image = std::any_of(image_flags.begin(), image_flags.end(),
+                                       [](int flag) { return flag != 0; });
+    auto results = eng.score(prompts, types, labels, any_image ? images : std::vector<encoded_image>{});
 
     for (size_t r = 0; r < results.size(); ++r) {
         const auto & row = results[r];

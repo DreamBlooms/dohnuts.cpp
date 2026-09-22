@@ -18,6 +18,9 @@ set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+# mtmd provides the vision encoder used by --mmproj; builds standalone when
+# LLAMA_BUILD_TOOLS is off.
+set(LLAMA_BUILD_MTMD ON CACHE BOOL "" FORCE)
 
 # Static linking produces a single self-contained binary; used for the Windows
 # cross build. The default is shared.
@@ -60,7 +63,7 @@ target_include_directories(dohnuts-core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
 )
-target_link_libraries(dohnuts-core PUBLIC llama)
+target_link_libraries(dohnuts-core PUBLIC llama mtmd)
 
 # HTTP transport adapted from lkarlslund/laya.cpp (MIT).
 find_package(Threads REQUIRED)

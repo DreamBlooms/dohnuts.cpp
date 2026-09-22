@@ -9,8 +9,9 @@ Native C++ inference for [Dohnuts](https://github.com/PsiACE/dohnuts), built on
 the merged Dohnuts LoRA, scores candidate markers with the scalar decision head,
 and returns probabilities from a single forward pass. No GPU, no generation.
 
-Dohnuts 0.1.0 is text-only. The released adapter carries language LoRA and the
-scorer head, and no vision weights.
+The released adapter carries language LoRA and the scorer head. The base model
+also has a frozen vision tower, so with an extra mmproj file the same API accepts
+one image per request (see [Vision](#vision)).
 
 ## One message, several decisions
 
@@ -95,6 +96,7 @@ Pre-converted GGUF files are published at
 | `Dohnuts-0.1.0-0.8B-Q8_0.gguf` | Q8_0 |
 | `Dohnuts-0.1.0-0.8B-Q6_K.gguf` | Q6_K |
 | `Dohnuts-0.1.0-0.8B-Q4_K_M.gguf` | Q4_K_M |
+| `mmproj-dohnuts-0.1.0-bf16.gguf` | Vision encoder (BF16, optional) |
 
 `head.f32` (the scorer head) and `dohnuts.json` (calibration) are required
 alongside any GGUF. Download one quantization plus both small files:
@@ -119,6 +121,38 @@ scripts/build_gguf.sh work/merged work
 ```
 
 This writes `dohnuts-f16.gguf`, `dohnuts-Q8_0.gguf`, and `dohnuts-Q4_K_M.gguf`.
+
+## Vision
+
+The Qwen3.5 base keeps its vision tower, and the Dohnuts LoRA only adapts the
+language side, so image decisions work without retraining. The tower ships
+separately as `mmproj-dohnuts-0.1.0-bf16.gguf`; pass it with `--mmproj`:
+
+```sh
+build/dohnuts-cli --server --port 8080 \
+  --model work/dohnuts-Q8_0.gguf --head work/head.f32 \
+  --metadata models/dohnuts-0.1.0/dohnuts.json \
+  --mmproj work/mmproj-dohnuts-0.1.0-bf16.gguf
+```
+
+Put one image in `state.image` as a base64 PNG or JPEG data URL. It is scored
+exactly like the Python `state["image"]`, and the image key is dropped from the
+text state:
+
+```sh
+curl http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' \
+  -d '{"state":{"image":"data:image/png;base64,iVBORw0KG..."},
+       "questions":{"shape":{"type":"choice","criteria":["square","circle"]}}}'
+```
+
+`usage.images` is 1 for image requests, 0 otherwise. One image per request is
+supported, matching Dohnuts. Without `--mmproj` any image request is rejected.
+
+Images are expensive on CPU, so a request with several questions about one image
+encodes the image once and runs the leading text and its 256 vision tokens
+through the language model once, then shares that state across the questions
+(the same prefix sharing the text path uses). Text-only requests skip all of it.
+Images are resized to 512x512 (256 tokens) to match the Python preprocessing.
 
 ## Accuracy
 
@@ -187,6 +221,7 @@ core is unchanged:
 | Scalar scorer `Linear(1024, 1)` | `head.f32` dot product in `engine.cpp` |
 | Temperature softmax, entropy confidence, expected score | `calibrate_answer` in `protocol.cpp` |
 | Shared input prefix | common prefix decoded once, then `llama_memory_seq_cp` |
+| Frozen vision tower + merger | mtmd with `mmproj-dohnuts-0.1.0-bf16.gguf`; M-RoPE positions injected per image chunk |
 
 Norm weights are stored as `weight + 1`, matching the Dohnuts fused kernels.
 
@@ -196,7 +231,7 @@ Norm weights are stored as `weight + 1`, matching the Dohnuts fused kernels.
 include/dohnuts/engine.hpp    engine interface
 include/dohnuts/protocol.hpp  prompt rendering, calibration, predictor
 include/dohnuts/http.hpp      HTTP transport
-src/engine.cpp                llama.cpp wrapper: load, tokenize, batched scoring
+src/engine.cpp                llama.cpp/mtmd wrapper: load, tokenize, batched scoring
 src/protocol.cpp              Dohnuts templates and answers
 src/http.cpp                  server routes and CORS
 src/main.cpp                  CLI and HTTP server

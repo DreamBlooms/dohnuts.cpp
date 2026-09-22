@@ -26,6 +26,13 @@ echo "==> converting to f16 GGUF"
 "$PYTHON" "$LLAMA/convert_hf_to_gguf.py" "$MERGED" \
     --outfile "$OUT/dohnuts-f16.gguf" --outtype f16 --no-mtp
 
+# The vision tower is separate and optional; convert it only when present.
+if "$PYTHON" -c "import json,sys; sys.exit(0 if 'vision_config' in json.load(open('$MERGED/config.json')) else 1)"; then
+    echo "==> converting vision encoder (mmproj)"
+    "$PYTHON" "$LLAMA/convert_hf_to_gguf.py" "$MERGED" \
+        --mmproj --outfile "$OUT/mmproj-dohnuts-0.1.0-bf16.gguf" --outtype bf16
+fi
+
 echo "==> quantizing Q8_0"
 "$QUANTIZE" "$OUT/dohnuts-f16.gguf" "$OUT/dohnuts-Q8_0.gguf" Q8_0
 
