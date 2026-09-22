@@ -207,11 +207,14 @@ void engine::decode_pass(const std::vector<std::vector<llama_token>> & token_row
 
     // The prompts share a long `State: ...` prefix. Compute the longest common
     // prefix once and reuse it across sequences, mirroring dohnuts' plan_prefix:
-    // cut before the first marker and align to 64 tokens.
+    // cut before the first marker, leave a two-token margin, and align to 64.
     size_t shared = 0;
     if (count > 1) {
+        size_t longest = 0;
         shared = token_rows[start].size();
-        for (size_t r = start + 1; r < start + count; ++r) {
+        for (size_t r = start; r < start + count; ++r) {
+            longest = std::max(longest, token_rows[r].size());
+            if (r == start) continue;
             const size_t limit = std::min(shared, token_rows[r].size());
             size_t i = 0;
             while (i < limit && token_rows[start][i] == token_rows[r][i]) ++i;
@@ -220,6 +223,7 @@ void engine::decode_pass(const std::vector<std::vector<llama_token>> & token_row
         for (size_t r = start; r < start + count; ++r)
             if (!marker_pos[r].empty())
                 shared = std::min(shared, (size_t) marker_pos[r].front());
+        shared = std::min(shared, longest > 2 ? longest - 2 : 0);
         shared = shared / 64 * 64;
     }
 

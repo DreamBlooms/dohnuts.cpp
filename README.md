@@ -109,10 +109,11 @@ shared-prefix case, every candidate choice agrees:
 | --- | ---: | ---: |
 | f16 | 0.573 | 0.097 |
 | Q8_0 | 0.656 | 0.094 |
+| Q6_K | 0.879 | 0.116 |
 | Q4_K_M | 1.878 | 0.161 |
 
-The deviations come from weight rounding and grow with quantization. Use f16 or
-Q8_0 when probabilities matter, Q4_K_M for coarse decisions.
+The deviations come from weight rounding and grow with quantization. Use f16,
+Q8_0, or Q6_K when probabilities matter, Q4_K_M for coarse decisions.
 
 ## Speed
 
