@@ -54,39 +54,28 @@ add_subdirectory("${LLAMA_DIR}" "${CMAKE_BINARY_DIR}/llama.cpp")
 
 # nlohmann/json is header-only and vendored under third_party/nlohmann so the
 # build stays self-contained and cross-compilable (no host /usr/include leaks).
+# Everything is compiled straight into one executable: the CLI is the only
+# artifact, so no intermediate libraries are produced.
 
-add_library(dohnuts-core
+# The HTTP transport is adapted from lkarlslund/laya.cpp (MIT).
+find_package(Threads REQUIRED)
+
+add_executable(dohnuts-cli
+    src/main.cpp
     src/engine.cpp
     src/protocol.cpp
-)
-target_include_directories(dohnuts-core PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
-)
-target_link_libraries(dohnuts-core PUBLIC llama mtmd)
-
-# Side decision-model profiles (decider, kev). Separated from the core so the
-# Dohnuts path stays untouched; reuses the same llama.cpp backend.
-add_library(dohnuts-side STATIC
     src/profile.cpp
     src/side.cpp
     src/side/runner.cpp
     src/side/decider.cpp
     src/side/kev.cpp
+    src/http.cpp
 )
-target_include_directories(dohnuts-side PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
-target_link_libraries(dohnuts-side PUBLIC llama)
-
-# HTTP transport adapted from lkarlslund/laya.cpp (MIT).
-find_package(Threads REQUIRED)
-add_library(dohnuts-http STATIC src/http.cpp)
-target_include_directories(dohnuts-http PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
-target_link_libraries(dohnuts-http PUBLIC Threads::Threads)
+target_include_directories(dohnuts-cli PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
+)
+target_link_libraries(dohnuts-cli PRIVATE llama mtmd Threads::Threads)
 if(WIN32)
-    target_link_libraries(dohnuts-http PUBLIC ws2_32)  # Winsock for cpp-httplib
+    target_link_libraries(dohnuts-cli PRIVATE ws2_32)  # Winsock for cpp-httplib
 endif()
-
-add_executable(dohnuts-cli src/main.cpp)
-target_link_libraries(dohnuts-cli PRIVATE dohnuts-core dohnuts-side dohnuts-http)
