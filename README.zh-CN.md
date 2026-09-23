@@ -186,11 +186,8 @@ scripts/build_kev_gguf.sh <Qwen3.5-0.8B-Base-dir> <kev-0.8b-dir> work/side
 ```
 
 二者都量化到 Q8_0。`kev` 会先在 fp32 下合并 LoRA 再转换，并写出 `kev-head.f32`
-（q 与 k 的 pointer 行及其偏置）和 `kev.json`。若 checkpoint 大到无法一次性放入内存，
-`scripts/export_kev_stream.py` 会逐个张量合并，输出布局相同。
-
-`scripts/compare/` 可用同一组样例把量化后的 side 模型与其 PyTorch 原实现对比；两个
-0.8B 模型全部一致。见 [scripts/compare/README.md](scripts/compare/README.md)。
+（q 与 k 的 pointer 行及其偏置）和 `kev.json`。对无法一次性放入内存的大 checkpoint，
+加 `--stream` 可逐张量低内存合并。
 
 ## 精度
 

@@ -198,12 +198,8 @@ scripts/build_kev_gguf.sh <Qwen3.5-0.8B-Base-dir> <kev-0.8b-dir> work/side
 
 Both exports are quantized to Q8_0. `kev` merges the LoRA in fp32 before
 conversion and writes `kev-head.f32` (the q and k pointer rows with their biases)
-plus `kev.json`. For checkpoints too large to hold in RAM, `scripts/export_kev_stream.py`
-merges one tensor at a time with the same output layout.
-
-`scripts/compare/` checks a quantized side model against its PyTorch reference on
-the same cases; both 0.8B models agree on all of them. See
-[scripts/compare/README.md](scripts/compare/README.md).
+plus `kev.json`. Pass `--stream` for a low-memory merge (one tensor at a time) on
+checkpoints too large to hold in RAM.
 
 ## Accuracy
 
