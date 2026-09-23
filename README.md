@@ -200,6 +200,10 @@ Both exports are quantized to Q8_0. `kev` merges the LoRA in fp32 before
 conversion and writes `kev-head.f32` (the q and k pointer rows with their biases)
 plus `kev.json`.
 
+`scripts/compare/` checks a quantized side model against its PyTorch reference on
+the same cases; both 0.8B models agree on all of them. See
+[scripts/compare/README.md](scripts/compare/README.md).
+
 ## Accuracy
 
 Against the f32 Hugging Face reference over six text cases and one long

@@ -188,6 +188,9 @@ scripts/build_kev_gguf.sh <Qwen3.5-0.8B-Base-dir> <kev-0.8b-dir> work/side
 二者都量化到 Q8_0。`kev` 会先在 fp32 下合并 LoRA 再转换，并写出 `kev-head.f32`
 （q 与 k 的 pointer 行及其偏置）和 `kev.json`。
 
+`scripts/compare/` 可用同一组样例把量化后的 side 模型与其 PyTorch 原实现对比；两个
+0.8B 模型全部一致。见 [scripts/compare/README.md](scripts/compare/README.md)。
+
 ## 精度
 
 与 f32 的 Hugging Face 原版对比（6 个文本样例 + 1 个长共享前缀样例），所有候选选择
