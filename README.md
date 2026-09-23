@@ -5,7 +5,7 @@ English | [简体中文](README.zh-CN.md)
 **The same decisions, on CPU.**
 
 Native C++ inference for [Dohnuts](https://github.com/PsiACE/dohnuts), built on
-[llama.cpp](third_party/llama.cpp). It runs the released Qwen3.5-0.8B base with the
+[llama.cpp](https://github.com/ggml-org/llama.cpp). It runs the released Qwen3.5-0.8B base with the
 merged Dohnuts LoRA, scores candidate markers with the scalar decision head, and
 returns probabilities from a single forward pass. No GPU, no generation.
 
@@ -83,6 +83,29 @@ sudo scripts/setup.sh --with-mingw
 scripts/build_windows.sh
 ```
 
+### GPU
+
+The default build is CPU only. CUDA, Vulkan, ROCm (HIP), and Metal are optional
+backends; enable one at configure time:
+
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_CUDA=ON     # NVIDIA
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_VULKAN=ON   # AMD or Intel
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_HIP=ON      # AMD ROCm
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_METAL=ON    # Apple
+cmake --build build -j --target dohnuts-cli
+```
+
+Each backend needs its own toolchain: the CUDA Toolkit, the Vulkan SDK (`glslc`
+and the loader), ROCm, or the Xcode command line tools. When cross-compiling, pin
+the target GPU with `-DCMAKE_CUDA_ARCHITECTURES=89` (CUDA) or
+`-DGPU_TARGETS=gfx1100` (HIP).
+
+Offload at runtime with `--gpu-layers -1` (all layers) or a positive layer count,
+and select devices with `--device CUDA0` or a comma-separated list.
+`--list-devices` prints what the build can use. A CPU-only build ignores
+`--gpu-layers`, so the same command line works everywhere.
+
 ## Models
 
 Pre-converted GGUF files are published at
@@ -151,6 +174,29 @@ encodes the image once and runs the leading text and its 256 vision tokens
 through the language model once, then shares that state across the questions.
 Images are resized to 512x512 (256 tokens) to match the Python preprocessing.
 
+## Accuracy
+
+Against the f32 Hugging Face reference over six text cases and one long
+shared-prefix case, every candidate choice agrees:
+
+| Precision | Max logit deviation | Max probability deviation |
+| --- | ---: | ---: |
+| f16 | 0.573 | 0.097 |
+| Q8_0 | 0.656 | 0.094 |
+| Q6_K | 0.879 | 0.116 |
+| Q4_K_M | 1.878 | 0.161 |
+
+The deviations come from weight rounding and grow with quantization. Use f16,
+Q8_0, or Q6_K when probabilities matter, Q4_K_M for coarse decisions.
+
+## Speed
+
+Qwen3.5 is a hybrid: 18 gated-delta-net layers and 6 full-attention layers. The
+delta-net is the CPU bottleneck, so prefill runs at roughly 21 tokens/s on eight
+threads and a two-question request takes a few seconds. Dohnuts never generates
+tokens, so only prefill matters. Numbers vary with host load; use `llama-bench`
+for a stable reference.
+
 ## Other decision models
 
 The CLI also runs two decision models that share the Qwen3.5-0.8B backbone but
@@ -201,52 +247,6 @@ conversion and writes `kev-head.f32` (the q and k pointer rows with their biases
 plus `kev.json`. Pass `--stream` for a low-memory merge (one tensor at a time) on
 checkpoints too large to hold in RAM.
 
-## Accuracy
-
-Against the f32 Hugging Face reference over six text cases and one long
-shared-prefix case, every candidate choice agrees:
-
-| Precision | Max logit deviation | Max probability deviation |
-| --- | ---: | ---: |
-| f16 | 0.573 | 0.097 |
-| Q8_0 | 0.656 | 0.094 |
-| Q6_K | 0.879 | 0.116 |
-| Q4_K_M | 1.878 | 0.161 |
-
-The deviations come from weight rounding and grow with quantization. Use f16,
-Q8_0, or Q6_K when probabilities matter, Q4_K_M for coarse decisions.
-
-## Speed
-
-Qwen3.5 is a hybrid: 18 gated-delta-net layers and 6 full-attention layers. The
-delta-net is the CPU bottleneck, so prefill runs at roughly 21 tokens/s on eight
-threads and a two-question request takes a few seconds. Dohnuts never generates
-tokens, so only prefill matters. Numbers vary with host load; use `llama-bench`
-for a stable reference.
-
-## GPU
-
-The default build is CPU only. CUDA, Vulkan, ROCm (HIP), and Metal are optional
-backends; enable one at configure time:
-
-```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_CUDA=ON     # NVIDIA
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_VULKAN=ON   # AMD or Intel
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_HIP=ON      # AMD ROCm
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_METAL=ON    # Apple
-cmake --build build -j --target dohnuts-cli
-```
-
-Each backend needs its own toolchain: the CUDA Toolkit, the Vulkan SDK (`glslc`
-and the loader), ROCm, or the Xcode command line tools. When cross-compiling, pin
-the target GPU with `-DCMAKE_CUDA_ARCHITECTURES=89` (CUDA) or
-`-DGPU_TARGETS=gfx1100` (HIP).
-
-Offload at runtime with `--gpu-layers -1` (all layers) or a positive layer count,
-and select devices with `--device CUDA0` or a comma-separated list.
-`--list-devices` prints what the build can use. A CPU-only build ignores
-`--gpu-layers`, so the same command line works everywhere.
-
 ## How it works
 
 Dohnuts reads the post-norm hidden state at each candidate marker, applies one
@@ -292,5 +292,5 @@ cmake/                        MinGW-w64 cross toolchain
 
 The code is licensed under [Apache-2.0](LICENSE). The HTTP layer is adapted from
 [laya.cpp](https://github.com/lkarlslund/laya.cpp) under MIT. See [NOTICE](NOTICE)
-for third-party terms. Dohnuts model weights keep their own license; the side
+for third-party terms. [Dohnuts model](https://huggingface.co/PsiACE/Dohnuts-0.1.0-0.8B) weights keep their own license; the side
 models keep theirs.
