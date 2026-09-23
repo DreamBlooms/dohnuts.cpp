@@ -237,11 +237,8 @@ struct http_server::impl {
         const auto& state = request.at("state");
         if (!state.is_string() && !state.is_structured())
             throw std::invalid_argument("state must be a string, object or array");
-        if (request.contains("model")) {
-            auto name = request.at("model").get<std::string>();
-            if (name != model && name != "dohnuts-latest" && name != "jev-latest")
-                throw std::invalid_argument("Requested model is not loaded; this server serves " + model);
-        }
+        if (request.contains("model") && !request.at("model").is_string())
+            throw std::invalid_argument("model must be a string");
         const auto& definitions = request.at("questions");
         if (!definitions.is_object() || definitions.empty())
             throw std::invalid_argument("questions must be a nonempty object");

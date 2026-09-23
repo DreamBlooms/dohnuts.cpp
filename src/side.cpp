@@ -35,6 +35,11 @@ json common_answer(const side::planned_question & q, const std::vector<double> &
             double score = 0;
             for (size_t k = 0; k < count; ++k) score += (double) k * p[k];
             answer["score"] = side::rounded(score);
+            if (!q.legend.empty()) {
+                json legend = json::object();
+                for (size_t k = 0; k < q.legend.size(); ++k) legend[std::to_string(k)] = q.legend[k];
+                answer["legend"] = legend;
+            }
         }
     }
     return answer;
@@ -135,7 +140,7 @@ json side_engine::predict(const json & requests, bool raw) const {
         }
         output.push_back({{"model", p->handler->model_name()},
                           {"answers", answers},
-                          {"usage", {{"input_tokens", input_tokens}, {"images", 0}}}});
+                          {"usage", {{"input_tokens", input_tokens}, {"output_tokens", 0}, {"images", 0}}}});
     }
     return output;
 }

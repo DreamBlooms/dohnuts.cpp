@@ -80,12 +80,13 @@ double rounded(double value) {
 
 } // namespace
 
-std::pair<std::string, std::vector<std::string>> render_question(
+rendered_question render_question(
         const std::string & state_text, const json & question) {
     const std::string kind = question.at("type").get<std::string>();
     const json criteria = question.contains("criteria") ? question.at("criteria") : json();
     std::vector<std::string> labels;
     std::vector<std::string> options;
+    json legend = json::object();
 
     if (kind == "noul") {
         json c = criteria.is_null() ? json::object() : criteria;
@@ -122,6 +123,7 @@ std::pair<std::string, std::vector<std::string>> render_question(
         for (size_t i = 0; i < criteria.size(); ++i) {
             labels.push_back(std::to_string(i));
             options.push_back("level " + std::to_string(i) + ": " + render(criteria[i]));
+            legend[std::to_string(i)] = criteria[i];
         }
     } else {
         throw std::invalid_argument("Unsupported decision type: " + kind);
@@ -142,7 +144,7 @@ std::pair<std::string, std::vector<std::string>> render_question(
             throw std::invalid_argument("Input contains the reserved candidate marker");
         content += "- " + option + MARKER;
     }
-    return {content, labels};
+    return {std::move(content), std::move(labels), std::move(legend)};
 }
 
 json raw_answer(const std::string & type,
@@ -154,7 +156,8 @@ json raw_answer(const std::string & type,
 json calibrate_answer(const std::string & type,
                       const std::vector<std::string> & labels,
                       const std::vector<float> & logits,
-                      double temperature) {
+                      double temperature,
+                      const json & legend) {
     if (labels.size() != logits.size() || labels.empty())
         throw std::invalid_argument("labels and logits must match");
     if (!std::isfinite(temperature) || temperature <= 0)
@@ -193,6 +196,7 @@ json calibrate_answer(const std::string & type,
             double score = 0;
             for (size_t k = 0; k < count; ++k) score += double(k) * probabilities[k];
             answer["score"] = rounded(score);
+            if (legend.is_object() && !legend.empty()) answer["legend"] = legend;
         }
         answer["confidence"] = std::clamp(1.0 - entropy / std::log(double(count)), 0.0, 1.0);
     }
@@ -208,6 +212,7 @@ json predictor::predict(const json & requests, bool raw) {
 
     std::vector<std::string> prompts, types;
     std::vector<std::vector<std::string>> labels;
+    std::vector<json> legends;
     std::vector<encoded_image> images;
     // Per request: token estimate is filled after scoring.
     std::vector<int> image_flags;
@@ -243,17 +248,18 @@ json predictor::predict(const json & requests, bool raw) {
         if (!questions.is_object() || questions.empty())
             throw std::invalid_argument("questions must be a nonempty object");
         for (auto it = questions.begin(); it != questions.end(); ++it) {
-            auto [content, option_labels] = render_question(state_text, it.value());
+            auto [content, option_labels, legend] = render_question(state_text, it.value());
             prompts.push_back(std::move(content));
             types.push_back(it.value().at("type").get<std::string>());
             labels.push_back(std::move(option_labels));
+            legends.push_back(std::move(legend));
             images.push_back(image);
             image_flags.push_back(has_image ? 1 : 0);
             slots.emplace_back(output.size(), it.key());
         }
         output.push_back({{"model", "dohnuts"},
                           {"answers", json::object()},
-                          {"usage", {{"input_tokens", 0}, {"images", has_image ? 1 : 0}}}});
+                          {"usage", {{"input_tokens", 0}, {"output_tokens", 0}, {"images", has_image ? 1 : 0}}}});
     }
 
     const bool any_image = std::any_of(image_flags.begin(), image_flags.end(),
@@ -267,7 +273,7 @@ json predictor::predict(const json & requests, bool raw) {
             answer = raw_answer(row.type, row.labels, row.logits);
         } else {
             const auto & temp = temperatures.at(row.type);
-            answer = calibrate_answer(row.type, row.labels, row.logits, temp.get<double>());
+            answer = calibrate_answer(row.type, row.labels, row.logits, temp.get<double>(), legends[r]);
         }
         const auto & [request_index, id] = slots[r];
         output[request_index]["answers"][id] = answer;

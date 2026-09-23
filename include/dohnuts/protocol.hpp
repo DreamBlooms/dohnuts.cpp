@@ -11,9 +11,16 @@ namespace dohnuts {
 
 using dohnuts::json;
 
+// One rendered question: the prompt, its candidate labels, and (for score
+// questions) the level index -> description legend.
+struct rendered_question {
+    std::string content;
+    std::vector<std::string> labels;
+    json legend;
+};
+
 // Renders the shared prompt template and returns the candidate labels.
-std::pair<std::string, std::vector<std::string>> render_question(
-        const std::string & state_text, const json & question);
+rendered_question render_question(const std::string & state_text, const json & question);
 
 // Raw scorer logits and labels for one question, before calibration.
 json raw_answer(const std::string & type,
@@ -24,7 +31,8 @@ json raw_answer(const std::string & type,
 json calibrate_answer(const std::string & type,
                       const std::vector<std::string> & labels,
                       const std::vector<float> & logits,
-                      double temperature);
+                      double temperature,
+                      const json & legend = json());
 
 // Full predictor backed by a resident engine.
 class predictor {

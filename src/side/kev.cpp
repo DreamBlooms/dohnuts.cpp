@@ -111,7 +111,7 @@ public:
             ? render(question.at("instructions"))
             : question.contains("question") ? render(question.at("question")) : "";
 
-        std::vector<std::string> names, options;
+        std::vector<std::string> names, options, legend;
         if (type == "noul" || type == "bool") {
             names = {"false", "true"};
             const json c = criteria.is_null() ? json::object() : criteria;
@@ -140,6 +140,7 @@ public:
             for (size_t k = 0; k < list.size(); ++k) {
                 names.push_back(std::to_string(k));
                 options.push_back(kev_render(list[k]));
+                legend.push_back(kev_render(list[k]));
             }
         } else {
             throw std::invalid_argument("Unsupported decision type: " + type);
@@ -151,6 +152,7 @@ public:
         q.id = id;
         q.type = (type == "bool") ? "noul" : type;
         q.keys = names;
+        q.legend = legend;
         q.first_row = rows.size();
         rows.push_back(render_row(state, instructions, options));
         questions.push_back(std::move(q));
