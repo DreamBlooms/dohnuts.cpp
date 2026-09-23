@@ -162,19 +162,19 @@ untouched, and neither takes images.
 | `decider` | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | LM head restricted to the option letters at an `Answer: (` slot | full fine-tune |
 | `kev` | [jaredpalmer/kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head |
 
-Pass `--profile decider` or `--profile kev`; the CLI and the `/v1/systemone`
-endpoint stay the same. `--metadata` becomes the matching model config, and
-`kev` additionally needs `--head`:
+Pass the matching model config as `--metadata`; the file names its own profile
+(`"profile": "decider"` or `"profile": "kev"`), so no flag is needed. `--profile`
+overrides the file, and `dohnuts` is the default. `kev` additionally needs
+`--head`:
 
 ```sh
 # decider: no scorer head, one temperature from decider.json
-build/dohnuts-cli --profile decider \
-  --model work/side/decider-0.8b-q8_0.gguf --metadata work/side/decider.json
+build/dohnuts-cli --model work/side/decider-0.8b-q8_0.gguf \
+  --metadata work/side/decider.json
 
 # kev: bilinear head plus one temperature from kev.json
-build/dohnuts-cli --profile kev \
-  --model work/side/kev-0.8b-q8_0.gguf --head work/side/kev-head.f32 \
-  --metadata work/side/kev.json
+build/dohnuts-cli --model work/side/kev-0.8b-q8_0.gguf \
+  --head work/side/kev-head.f32 --metadata work/side/kev.json
 ```
 
 The response keeps the same core fields (`type`, `choice`, `probabilities`,

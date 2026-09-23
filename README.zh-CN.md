@@ -153,18 +153,18 @@ CLI 还能运行两个共用 Qwen3.5-0.8B 基座、但提示与读出方式不�
 | `decider` | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | 在 `Answer: (` 槽位把 LM head 限制到选项字母 | 全量微调 |
 | `kev` | [jaredpalmer/kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head |
 
-加 `--profile decider` 或 `--profile kev`，CLI 与 `/v1/systemone` 接口不变。
-`--metadata` 换为对应模型配置，`kev` 还需 `--head`：
+把对应模型配置作为 `--metadata` 传入即可；配置文件自带 profile
+（`"profile": "decider"` 或 `"profile": "kev"`），无需额外开关。`--profile` 可覆盖
+文件设置，默认 `dohnuts`。`kev` 还需 `--head`：
 
 ```sh
 # decider：无需打分头，温度来自 decider.json
-build/dohnuts-cli --profile decider \
-  --model work/side/decider-0.8b-q8_0.gguf --metadata work/side/decider.json
+build/dohnuts-cli --model work/side/decider-0.8b-q8_0.gguf \
+  --metadata work/side/decider.json
 
 # kev：双线性头 + kev.json 中的温度
-build/dohnuts-cli --profile kev \
-  --model work/side/kev-0.8b-q8_0.gguf --head work/side/kev-head.f32 \
-  --metadata work/side/kev.json
+build/dohnuts-cli --model work/side/kev-0.8b-q8_0.gguf \
+  --head work/side/kev-head.f32 --metadata work/side/kev.json
 ```
 
 响应保留同一套核心字段（`type`、`choice`、`probabilities`、`noul`、`score`、
