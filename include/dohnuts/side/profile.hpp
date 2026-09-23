@@ -22,6 +22,8 @@ struct planned_row {
     int slot_rel = -1;             // logits position (decider) or decide position (kev)
     int n_options = 0;
     std::vector<int> letters;      // per-option label token ids (decider)
+    size_t prefix = 0;             // leading state tokens, shared by rows of one request
+    bool keep = false;             // reuse or checkpoint the prefix (multi-row requests)
 };
 
 // One request question; a Score question may expand to several rows.

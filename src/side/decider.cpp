@@ -156,7 +156,7 @@ public:
     }
 
     std::vector<double> score(const planned_row & row) const override {
-        back.decode(row.ids, row.slot_rel);
+        back.decode(row.ids, row.slot_rel, row.prefix, row.keep);
         const float * logits = back.logits_at(row.slot_rel);
         std::vector<double> raw(row.n_options);
         for (int j = 0; j < row.n_options; ++j) raw[j] = (double) logits[row.letters[j]];
@@ -190,6 +190,7 @@ private:
         planned_row row;
         row.n_options = (int) options.size();
         row.ids = back.tokenize("Context:\n" + state_text, true);
+        row.prefix = row.ids.size();
         const std::string head = "\n\nQuestion: " + question_text + "\nOptions:";
         const std::string tail = "\nAnswer: (";
         if (row.n_options <= NARROW) {
