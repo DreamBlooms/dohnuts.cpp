@@ -9,8 +9,9 @@
 合并后的 Dohnuts LoRA，用标量决策头对候选标记打分，单次前向返回概率分布。不需要 GPU，
 也不生成文本。
 
-发布的 adapter 只包含语言 LoRA 和打分头。基座本身还带有冻结的视觉塔，因此额外提供一个
-mmproj 文件后，同一套 API 即可接受每请求一张图片（见[视觉](#视觉)）。
+基座保留了冻结的视觉塔，因此额外提供一个 mmproj 文件即可做图像决策（见[视觉](#视觉)）。
+同一个二进制还通过 profile 运行两个相关决策模型 `decider-0.8b` 与 `kev-0.8b`
+（见[其他决策模型](#其他决策模型)）。
 
 ## 一条消息，多个决策
 
@@ -44,17 +45,14 @@ curl http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' \
 
 `choice`、`score`、`noul` 的语义与 [Dohnuts](https://github.com/PsiACE/dohnuts) 一致。
 `/predict` 接受单个请求或数组；`/health` 和 `/v1/models` 描述服务状态。加
-`--api-key KEY` 后，预测接口需要 `Authorization: Bearer KEY`。CORS 默认允许任意来源，
-用 `--cors-origin ORIGIN` 可限制。
-
-用 `--input requests.jsonl` 可以对文件逐行跑 CLI；加 `--raw` 则输出未校准的打分 logits。
+`--api-key KEY` 后预测接口需要 `Authorization: Bearer KEY`，用 `--cors-origin ORIGIN`
+可限制 CORS（默认开放）。用 `--input requests.jsonl` 对文件逐行跑 CLI，加 `--raw`
+则输出未校准的打分 logits。
 
 ## 构建
 
-需要 CMake 3.14+ 和支持 C++20 的编译器。
-
-在 Ubuntu / Debian 上，下面两个脚本会安装依赖并编译 CLI（多余参数会转交给
-CMake，例如指定 GPU 后端）：
+需要 CMake 3.14+ 和支持 C++20 的编译器。在 Ubuntu / Debian 上，下面两个脚本会安装
+依赖并编译 CLI（多余参数会转交给 CMake，例如指定 GPU 后端）：
 
 ```sh
 sudo scripts/setup.sh
@@ -69,7 +67,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON
 cmake --build build -j --target dohnuts-cli
 ```
 
-llama.cpp 以子模块固定在发行版 `v0.4.1`。用 `-DLLAMA_DIR=...` 可指向其他 checkout。
+llama.cpp 以子模块固定在发行版 `v0.4.1`；用 `-DLLAMA_DIR=...` 可指向其他 checkout。
 
 ### Windows（交叉编译）
 
@@ -102,7 +100,7 @@ hf download DreamBlooms/Dohnuts-0.1.0-0.8B-GGUF \
   Dohnuts-0.1.0-0.8B-Q8_0.gguf head.f32 dohnuts.json --local-dir models
 ```
 
-## 自己构建 GGUF
+### 自己构建 GGUF
 
 发布的是紧凑 checkpoint，不是独立的语言模型。先合并到基座，再转换与量化：
 
@@ -142,8 +140,53 @@ curl http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' \
 `--mmproj` 时，任何图像请求都会被拒绝。
 
 CPU 上图像开销较大，因此同一张图问多个问题时，图片只编码一次，前导文本与 256 个视觉
-token 也只过一次语言模型，再把这份状态共享给各个问题（与文本路径同一套前缀共享）。
-纯文本请求完全不会触发。图片会缩放到 512x512（256 token），与 Python 预处理一致。
+token 也只过一次语言模型，再把这份状态共享给各个问题。图片会缩放到 512x512（256
+token），与 Python 预处理一致。
+
+## 其他决策模型
+
+CLI 还能运行两个共用 Qwen3.5-0.8B 基座、但提示与读出方式不同的决策模型。它们以 profile
+形式提供：Dohnuts 路径保持不变，二者都不支持图像。
+
+| Profile | 模型 | 读出方式 | 权重 |
+| --- | --- | --- | --- |
+| `decider` | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | 在 `Answer: (` 槽位把 LM head 限制到选项字母 | 全量微调 |
+| `kev` | [jaredpalmer/kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head |
+
+加 `--profile decider` 或 `--profile kev`，CLI 与 `/v1/systemone` 接口不变。
+`--metadata` 换为对应模型配置，`kev` 还需 `--head`：
+
+```sh
+# decider：无需打分头，温度来自 decider.json
+build/dohnuts-cli --profile decider \
+  --model work/side/decider-0.8b-q8_0.gguf --metadata work/side/decider.json
+
+# kev：双线性头 + kev.json 中的温度
+build/dohnuts-cli --profile kev \
+  --model work/side/kev-0.8b-q8_0.gguf --head work/side/kev-head.f32 \
+  --metadata work/side/kev.json
+```
+
+响应保留同一套核心字段（`type`、`choice`、`probabilities`、`noul`、`score`、
+`confidence`），客户端无需改动。各 profile 在 `native` 下附加自己的统计量：decider 有
+`certainty`，以及 isolated `score` 层级的 `legend` / `level_fit` / `fit_mass`；kev 有
+其自身的 confidence。
+
+GGUF 转换产物与合并后的 kev 头发布在
+[DreamBlooms/decider-0.8b-GGUF](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF) 和
+[DreamBlooms/kev-0.8b-GGUF](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF)。从上游
+checkpoint 重建：
+
+```sh
+# decider-0.8b：全量微调，直接转换
+scripts/build_decider_gguf.sh <decider-0.8b-dir> work/side/decider-0.8b-q8_0.gguf
+
+# kev-0.8b：先把 LoRA 合并进基座、导出头，再转换
+scripts/build_kev_gguf.sh <Qwen3.5-0.8B-Base-dir> <kev-0.8b-dir> work/side
+```
+
+二者都量化到 Q8_0。`kev` 会先在 fp32 下合并 LoRA 再转换，并写出 `kev-head.f32`
+（q 与 k 的 pointer 行及其偏置）和 `kev.json`。
 
 ## 精度
 
@@ -178,19 +221,12 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DDOHNUTS_METAL=ON    # Apple
 cmake --build build -j --target dohnuts-cli
 ```
 
-各后端需要各自的工具链：CUDA 需要 CUDA Toolkit，Vulkan 需要 Vulkan SDK（`glslc` 与
-loader），HIP 需要 ROCm，Metal 需要 Xcode 命令行工具。交叉编译时用
-`-DCMAKE_CUDA_ARCHITECTURES=89`（CUDA）或 `-DGPU_TARGETS=gfx1100`（HIP）指定目标 GPU。
+各后端需要各自的工具链：CUDA Toolkit、Vulkan SDK（`glslc` 与 loader）、ROCm、或
+Xcode 命令行工具。交叉编译时用 `-DCMAKE_CUDA_ARCHITECTURES=89`（CUDA）或
+`-DGPU_TARGETS=gfx1100`（HIP）指定目标 GPU。
 
-运行时卸载到 GPU：
-
-```sh
-build/dohnuts-cli --model Dohnuts-0.1.0-0.8B-Q8_0.gguf --head head.f32 \
-  --metadata dohnuts.json --gpu-layers -1
-```
-
-`--gpu-layers -1` 把全部层放进显存，正数表示放多少层。`--device CUDA0` 或用逗号分隔的
-列表选择设备；`--list-devices` 打印当前构建可用的设备。纯 CPU 构建会忽略
+运行时用 `--gpu-layers -1`（全部层）或正数（层数）卸载到 GPU，用 `--device CUDA0`
+或逗号分隔列表选择设备；`--list-devices` 打印当前构建可用的设备。纯 CPU 构建会忽略
 `--gpu-layers`，所以同一条命令在任何构建下都能用。
 
 ## 实现方式
@@ -207,6 +243,9 @@ llama.cpp 已支持该架构（`qwen35`），并通过公共 API 暴露了全部
 | 共享输入前缀 | 公共前缀只算一次，再用 `llama_memory_seq_cp` 复用 |
 | 冻结视觉塔 + merger | mtmd 加载 `mmproj-dohnuts-0.1.0-bf16.gguf`，逐图像块注入 M-RoPE 位置 |
 
+side profile 复用同一后端，但有自己的读出：decider 把 LM head 限制到选项字母，kev 把
+decide 与选项结束处的隐状态过双线性 pointer head。
+
 Norm 权重按 `weight + 1` 存储，与 Dohnuts 的融合算子一致。
 
 ## 目录
@@ -214,9 +253,14 @@ Norm 权重按 `weight + 1` 存储，与 Dohnuts 的融合算子一致。
 ```
 include/dohnuts/engine.hpp    引擎接口
 include/dohnuts/protocol.hpp  提示渲染、校准、predictor
+include/dohnuts/profile.hpp   side 模型 profile 开关
+include/dohnuts/side.hpp      side 引擎门面
+include/dohnuts/side/         runner、decider 与 kev profile
 include/dohnuts/http.hpp      HTTP 传输层
 src/engine.cpp                llama.cpp/mtmd 封装：加载、tokenize、批量打分
 src/protocol.cpp              Dohnuts 模板与答案
+src/side.cpp                  side profile 分发
+src/side/                     共享 runner 与两个 side profile
 src/http.cpp                  服务路由与 CORS
 src/main.cpp                  CLI 与 HTTP 服务
 scripts/                      环境安装、原生/Windows 构建、模型导出与 GGUF
@@ -226,4 +270,5 @@ cmake/                        MinGW-w64 交叉工具链
 ## 许可证
 
 代码采用 [Apache-2.0](LICENSE)。HTTP 层改编自 [laya.cpp](https://github.com/lkarlslund/laya.cpp)，
-遵循 MIT；第三方条款见 [NOTICE](NOTICE)。Dohnuts 模型权重保留其原有许可。
+遵循 MIT；第三方条款见 [NOTICE](NOTICE)。Dohnuts 模型权重保留其原有许可；side 模型
+保留各自的许可。

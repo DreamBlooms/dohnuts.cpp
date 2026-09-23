@@ -65,6 +65,19 @@ target_include_directories(dohnuts-core PUBLIC
 )
 target_link_libraries(dohnuts-core PUBLIC llama mtmd)
 
+# Side decision-model profiles (decider, kev). Separated from the core so the
+# Dohnuts path stays untouched; reuses the same llama.cpp backend.
+add_library(dohnuts-side STATIC
+    src/profile.cpp
+    src/side.cpp
+    src/side/runner.cpp
+    src/side/decider.cpp
+    src/side/kev.cpp
+)
+target_include_directories(dohnuts-side PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
+target_link_libraries(dohnuts-side PUBLIC llama)
+
 # HTTP transport adapted from lkarlslund/laya.cpp (MIT).
 find_package(Threads REQUIRED)
 add_library(dohnuts-http STATIC src/http.cpp)
@@ -76,4 +89,4 @@ if(WIN32)
 endif()
 
 add_executable(dohnuts-cli src/main.cpp)
-target_link_libraries(dohnuts-cli PRIVATE dohnuts-core dohnuts-http)
+target_link_libraries(dohnuts-cli PRIVATE dohnuts-core dohnuts-side dohnuts-http)

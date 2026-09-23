@@ -1,5 +1,6 @@
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -7,7 +8,9 @@
 
 #include "dohnuts/engine.hpp"
 #include "dohnuts/http.hpp"
+#include "dohnuts/profile.hpp"
 #include "dohnuts/protocol.hpp"
+#include "dohnuts/side.hpp"
 
 namespace {
 
@@ -17,10 +20,11 @@ struct options {
     bool server = false;
     std::string host = "127.0.0.1";
     int port = 8080;
+    std::string profile = "dohnuts";   // dohnuts (core), decider or kev
     std::string model;
-    std::string head;
+    std::string head;       // dohnuts: head.f32; kev: kev-head.f32
     std::string mmproj;     // vision encoder; enables image input
-    std::string metadata;   // dohnuts.json
+    std::string metadata;   // dohnuts.json (dohnuts) or decider.json / kev.json
     std::string input;      // JSONL file for CLI mode
     std::string api_key;
     std::string cors_origin = "*";
@@ -48,10 +52,11 @@ json temperatures_from(const json & metadata) {
 
 void usage() {
     std::cerr << "usage: dohnuts-cli --model M.gguf --head head.f32 --metadata dohnuts.json "
-                 "[--mmproj MMPROJ.gguf] "
-                 "[--gpu-layers N] [--device NAME[,NAME]] [--threads N] "
+                 "[--mmproj MMPROJ.gguf] [--gpu-layers N] [--device NAME[,NAME]] [--threads N] "
                  "[--server --host H --port P --api-key K --cors-origin ORIGIN "
                  "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n"
+                 "       dohnuts-cli --profile decider --model M.gguf --metadata decider.json [...]\n"
+                 "       dohnuts-cli --profile kev --model M.gguf --head kev-head.f32 --metadata kev.json [...]\n"
                  "       dohnuts-cli --list-devices\n";
 }
 
@@ -69,6 +74,7 @@ int main(int argc, char ** argv) {
             if (arg == "--server") opts.server = true;
             else if (arg == "--host") opts.host = next();
             else if (arg == "--port") opts.port = std::stoi(next());
+            else if (arg == "--profile") opts.profile = next();
             else if (arg == "--model") opts.model = next();
             else if (arg == "--head") opts.head = next();
             else if (arg == "--mmproj") opts.mmproj = next();
@@ -89,11 +95,64 @@ int main(int argc, char ** argv) {
             for (const auto & name : dohnuts::available_devices()) std::cout << name << '\n';
             return 0;
         }
-        if (opts.model.empty() || opts.head.empty() || opts.metadata.empty()) {
-            usage();
-            return 2;
+
+        const dohnuts::model_profile profile = dohnuts::profile_from_string(opts.profile);
+        if (opts.model.empty() || opts.metadata.empty()) { usage(); return 2; }
+
+        // The predictor callback is the same shape for every profile; only the
+        // backend differs. Side profiles have no vision and require kev's head.
+        dohnuts::http_options http;
+        http.host = opts.host;
+        http.port = opts.port;
+        http.model = opts.profile;
+        http.api_key = opts.api_key;
+        http.cors_origin = opts.cors_origin;
+        http.max_questions = opts.max_questions;
+        http.batching = opts.batching;
+
+        if (profile != dohnuts::model_profile::dohnuts) {
+            if (profile == dohnuts::model_profile::kev && opts.head.empty()) {
+                std::cerr << "error: kev requires --head\n";
+                return 2;
+            }
+            dohnuts::side_options side_opts;
+            side_opts.profile = profile;
+            side_opts.model = opts.model;
+            side_opts.head = opts.head;
+            side_opts.config = opts.metadata;
+            side_opts.threads = opts.threads;
+            side_opts.gpu_layers = opts.gpu_layers;
+            side_opts.device = opts.device;
+            auto eng = std::make_shared<dohnuts::side_engine>(side_opts);
+            http.backend = eng->backend_name() + " on " + eng->device_name();
+            auto predict = [eng, raw = opts.raw](const json & requests) {
+                return eng->predict(requests, raw);
+            };
+            if (opts.server) return dohnuts::serve_http(http, predict);
+
+            std::istream * stream = &std::cin;
+            std::ifstream file;
+            if (!opts.input.empty()) {
+                file.open(opts.input);
+                if (!file) throw std::runtime_error("Cannot open " + opts.input);
+                stream = &file;
+            }
+            std::string line;
+            while (std::getline(*stream, line)) {
+                if (line.empty()) continue;
+                try {
+                    json value = json::parse(line);
+                    json requests = value.is_array() ? value : json::array({value});
+                    json results = predict(requests);
+                    std::cout << (value.is_array() ? results : results.at(0)).dump() << '\n';
+                } catch (const std::exception & e) {
+                    std::cout << json({{"error", {{"message", e.what()}}}}).dump() << '\n';
+                }
+            }
+            return 0;
         }
 
+        if (opts.head.empty()) { usage(); return 2; }
         dohnuts::engine_options engine_opts;
         engine_opts.model = opts.model;
         engine_opts.head = opts.head;
@@ -107,15 +166,8 @@ int main(int argc, char ** argv) {
         dohnuts::predictor predict(eng, temperatures_from(metadata));
 
         if (opts.server) {
-            dohnuts::http_options http;
-            http.host = opts.host;
-            http.port = opts.port;
             http.model = "dohnuts";
             http.backend = eng.backend_name() + " on " + eng.device_name();
-            http.api_key = opts.api_key;
-            http.cors_origin = opts.cors_origin;
-            http.max_questions = opts.max_questions;
-            http.batching = opts.batching;
             return dohnuts::serve_http(http, [&](const json & requests) {
                 return predict.predict(requests, opts.raw);
             });
