@@ -20,7 +20,7 @@ struct options {
     bool server = false;
     std::string host = "127.0.0.1";
     int port = 8080;
-    std::string profile = "dohnuts";   // dohnuts (core), decider or kev
+    std::string profile;    // empty = detect from --metadata (dohnuts, decider or kev)
     std::string model;
     std::string head;       // dohnuts: head.f32; kev: kev-head.f32
     std::string mmproj;     // vision encoder; enables image input
@@ -51,13 +51,15 @@ json temperatures_from(const json & metadata) {
 }
 
 void usage() {
-    std::cerr << "usage: dohnuts-cli --model M.gguf --head head.f32 --metadata dohnuts.json "
-                 "[--mmproj MMPROJ.gguf] [--gpu-layers N] [--device NAME[,NAME]] [--threads N] "
+    std::cerr << "usage: dohnuts-cli --model M.gguf --metadata M.json [--head H.f32] "
+                 "[--mmproj MMPROJ.gguf] [--profile NAME] "
+                 "[--gpu-layers N] [--device NAME[,NAME]] [--threads N] "
                  "[--server --host H --port P --api-key K --cors-origin ORIGIN "
                  "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n"
-                 "       dohnuts-cli --profile decider --model M.gguf --metadata decider.json [...]\n"
-                 "       dohnuts-cli --profile kev --model M.gguf --head kev-head.f32 --metadata kev.json [...]\n"
-                 "       dohnuts-cli --list-devices\n";
+                 "       dohnuts-cli --list-devices\n"
+                 "\n"
+                 "The metadata file names its profile: dohnuts (default), decider or kev.\n"
+                 "dohnuts needs --head head.f32; kev needs --head kev-head.f32.\n";
 }
 
 } // namespace
@@ -95,16 +97,21 @@ int main(int argc, char ** argv) {
             for (const auto & name : dohnuts::available_devices()) std::cout << name << '\n';
             return 0;
         }
-
-        const dohnuts::model_profile profile = dohnuts::profile_from_string(opts.profile);
         if (opts.model.empty() || opts.metadata.empty()) { usage(); return 2; }
+
+        // The metadata file names its profile ("dohnuts", "decider" or "kev");
+        // --profile overrides it. Unknown or missing defaults to dohnuts.
+        const json metadata = load_json(opts.metadata);
+        std::string profile_name = opts.profile;
+        if (profile_name.empty()) profile_name = metadata.value("profile", "dohnuts");
+        const dohnuts::model_profile profile = dohnuts::profile_from_string(profile_name);
 
         // The predictor callback is the same shape for every profile; only the
         // backend differs. Side profiles have no vision and require kev's head.
         dohnuts::http_options http;
         http.host = opts.host;
         http.port = opts.port;
-        http.model = opts.profile;
+        http.model = profile_name;
         http.api_key = opts.api_key;
         http.cors_origin = opts.cors_origin;
         http.max_questions = opts.max_questions;
@@ -162,7 +169,6 @@ int main(int argc, char ** argv) {
         engine_opts.device = opts.device;
         dohnuts::engine eng(engine_opts);
 
-        const json metadata = load_json(opts.metadata);
         dohnuts::predictor predict(eng, temperatures_from(metadata));
 
         if (opts.server) {

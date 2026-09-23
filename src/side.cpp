@@ -52,10 +52,6 @@ struct side_engine::impl {
 side_engine::side_engine(const side_options & options) : p(std::make_unique<impl>()) {
     json config = load_config(options.config);
     p->kind = options.profile;
-    // A config may name its profile; the CLI default is decider, so let the
-    // config override that default.
-    if (config.contains("profile") && options.profile == model_profile::decider)
-        p->kind = profile_from_string(config.at("profile").get<std::string>());
     p->gpu_layers = options.gpu_layers;
 
     side::runner_options ropts;
