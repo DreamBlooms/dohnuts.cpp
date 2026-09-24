@@ -1,27 +1,15 @@
 #include "dohnuts/side/runner.hpp"
 
-#include <list>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
 
+#include "dohnuts/prefix_cache.hpp"
 #include "dohnuts/side/common.hpp"
 #include "llama.h"
 
 namespace dohnuts::side {
 namespace {
-
-// Hybrid Qwen3.5 memory keeps recurrent state that cannot be truncated to a
-// shorter prefix, so reuse goes through full sequence-state checkpoints (as in
-// pcdServer). A checkpoint of the 0.8B model is about 22 MB; shorter prefixes
-// are cheaper to decode again than to save.
-constexpr size_t PREFIX_MIN_TOKENS = 16;
-constexpr size_t PREFIX_CACHE_LIMIT = 256u * 1024 * 1024;
-
-struct checkpoint {
-    std::vector<int32_t> ids;
-    std::vector<uint8_t> state;
-};
 
 // Decodes ids[begin, end) at their own positions onto the current memory.
 void decode_range(llama_context * ctx, const std::vector<int32_t> & ids, size_t begin,
@@ -54,9 +42,8 @@ struct runner::impl {
     bool embeddings = false;
     int offset = 0;   // leading tokens of the last decode that preceded its output batch
 
-    // LRU of prefix checkpoints, front = most recently used.
-    std::list<checkpoint> cache;
-    size_t cache_bytes = 0;
+    // Cross-request LRU of decoded prefixes, keyed by the exact prefix tokens.
+    prefix_cache cache;
 
     ~impl() {
         if (ctx) llama_free(ctx);
@@ -132,35 +119,25 @@ void runner::decode(const std::vector<int32_t> & ids, int logits_index, size_t p
     // The checkpoint must leave at least one token to decode for the outputs.
     if (keep && prefix >= PREFIX_MIN_TOKENS && prefix < ids.size()) {
         const std::vector<int32_t> key(ids.begin(), ids.begin() + (std::ptrdiff_t) prefix);
-        auto hit = std::find_if(p->cache.begin(), p->cache.end(),
-                                [&](const checkpoint & c) { return c.ids == key; });
-        if (hit != p->cache.end()) {
-            p->cache.splice(p->cache.begin(), p->cache, hit);
-            const auto & state = p->cache.front().state;
-            if (llama_state_seq_set_data_ext(p->ctx, state.data(), state.size(), 0, LLAMA_STATE_SEQ_FLAGS_NONE) == state.size()
+        const std::vector<uint8_t> * cached = p->cache.get(key);
+        if (cached) {
+            if (llama_state_seq_set_data_ext(p->ctx, cached->data(), cached->size(), 0,
+                                             LLAMA_STATE_SEQ_FLAGS_NONE) == cached->size()
                 && llama_memory_seq_pos_max(memory, 0) == (llama_pos) prefix - 1) {
                 p->offset = (int) prefix;
             } else {
-                p->cache_bytes -= state.size();
-                p->cache.pop_front();
+                p->cache.drop_front();
                 llama_memory_clear(memory, true);
             }
         }
         if (p->offset == 0) {
             decode_range(p->ctx, ids, 0, prefix, -1, p->embeddings);
             p->offset = (int) prefix;
-            checkpoint entry{key, {}};
-            entry.state.resize(llama_state_seq_get_size_ext(p->ctx, 0, LLAMA_STATE_SEQ_FLAGS_NONE));
-            entry.state.resize(llama_state_seq_get_data_ext(p->ctx, entry.state.data(), entry.state.size(), 0,
-                                                            LLAMA_STATE_SEQ_FLAGS_NONE));
-            if (!entry.state.empty() && entry.state.size() <= PREFIX_CACHE_LIMIT) {
-                p->cache_bytes += entry.state.size();
-                p->cache.push_front(std::move(entry));
-                while (p->cache_bytes > PREFIX_CACHE_LIMIT) {
-                    p->cache_bytes -= p->cache.back().state.size();
-                    p->cache.pop_back();
-                }
-            }
+            std::vector<uint8_t> state(
+                llama_state_seq_get_size_ext(p->ctx, 0, LLAMA_STATE_SEQ_FLAGS_NONE));
+            state.resize(llama_state_seq_get_data_ext(p->ctx, state.data(), state.size(), 0,
+                                                      LLAMA_STATE_SEQ_FLAGS_NONE));
+            p->cache.put(key, std::move(state));
         }
     }
     decode_range(p->ctx, ids, (size_t) p->offset, ids.size(), logits_index, p->embeddings);

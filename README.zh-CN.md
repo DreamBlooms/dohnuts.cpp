@@ -184,6 +184,10 @@ Qwen3.5 为混合架构：18 层 gated delta net 与 6 层全注意力。CPU 上
 八线程下 prefill 约为 21 tokens/s，一个包含两个问题的请求需要数秒。Dohnuts 不生成 token，
 因此只有 prefill 有意义。具体数值会随主机负载波动，稳定的基准请使用 `llama-bench`。
 
+一次调用中的多个问题共享同一 state 时，`State:` 前缀只解码一次并复制到各候选序列。已解码的
+前缀还会跨调用保留在有界 LRU 中（256 MiB，按前缀 token 精确索引），因此重复出现的 state 可
+跳过 prefill；state 越长、复用越多，收益越明显。side 模型共用同一套缓存。
+
 ## 其他决策模型
 
 CLI 还可运行两个决策模型，它们与 Dohnuts 共用 Qwen3.5-0.8B 基座，但使用各自的提示模板与

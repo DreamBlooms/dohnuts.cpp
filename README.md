@@ -197,6 +197,12 @@ threads and a two-question request takes a few seconds. Dohnuts never generates
 tokens, so only prefill matters. Numbers vary with host load; use `llama-bench`
 for a stable reference.
 
+A call that asks several questions about one state decodes the shared `State:`
+prefix once and copies it across the candidate sequences. Decoded prefixes are
+also kept across calls in a bounded LRU (256 MiB, keyed by the exact prefix
+tokens), so a state seen before skips its prefill; the gain grows with state
+length and reuse. The side models share the same cache.
+
 ## Other decision models
 
 The CLI also runs two decision models that share the Qwen3.5-0.8B backbone but

@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <thread>
 
+#include "dohnuts/prefix_cache.hpp"
 #include "llama.h"
 #include "mtmd.h"
 #include "mtmd-helper.h"
@@ -92,6 +93,10 @@ struct engine::impl {
     std::list<std::pair<std::string, image_cache_entry>> image_cache;
     size_t image_cache_bytes = 0;
     static constexpr size_t IMAGE_CACHE_LIMIT = 128u * 1024 * 1024;
+
+    // Cross-request cache of decoded state prefixes, keyed by the exact prefix
+    // tokens (the shared `State: ...` head). Mirrors the side profiles' cache.
+    prefix_cache prefixes;
 
     ~impl() {
         if (mtmd) mtmd_free(mtmd);
@@ -563,9 +568,34 @@ void engine::decode_pass(const std::vector<std::vector<llama_token>> & token_row
     if (shared > 0) {
         std::vector<llama_token> pt(token_rows[start].begin(),
                                     token_rows[start].begin() + shared);
-        std::vector<llama_pos> pp(shared);
-        for (size_t i = 0; i < shared; ++i) pp[i] = (llama_pos) i;
-        run(pt, pp, std::vector<llama_seq_id>(shared, 0), std::vector<int8_t>(shared, 0));
+        const std::vector<int32_t> key(pt.begin(), pt.end());
+        // Restore a checkpoint from an earlier call when the same prefix was
+        // decoded before; otherwise decode it once and checkpoint it.
+        bool restored = false;
+        if (shared >= PREFIX_MIN_TOKENS) {
+            const std::vector<uint8_t> * cached = p->prefixes.get(key);
+            if (cached &&
+                llama_state_seq_set_data_ext(p->ctx, cached->data(), cached->size(), 0,
+                                             LLAMA_STATE_SEQ_FLAGS_NONE) == cached->size() &&
+                llama_memory_seq_pos_max(mem, 0) == (llama_pos) shared - 1) {
+                restored = true;
+            } else if (cached) {
+                p->prefixes.drop_front();
+                llama_memory_clear(mem, true);
+            }
+        }
+        if (!restored) {
+            std::vector<llama_pos> pp(shared);
+            for (size_t i = 0; i < shared; ++i) pp[i] = (llama_pos) i;
+            run(pt, pp, std::vector<llama_seq_id>(shared, 0), std::vector<int8_t>(shared, 0));
+            if (shared >= PREFIX_MIN_TOKENS) {
+                std::vector<uint8_t> state(
+                    llama_state_seq_get_size_ext(p->ctx, 0, LLAMA_STATE_SEQ_FLAGS_NONE));
+                state.resize(llama_state_seq_get_data_ext(p->ctx, state.data(), state.size(), 0,
+                                                          LLAMA_STATE_SEQ_FLAGS_NONE));
+                p->prefixes.put(key, std::move(state));
+            }
+        }
         // Share the prefix state with every other sequence.
         for (size_t r = 1; r < count; ++r)
             llama_memory_seq_cp(mem, 0, (llama_seq_id) r, 0, (llama_pos) shared);
