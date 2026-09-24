@@ -39,7 +39,12 @@ public:
     // Decodes ids as one sequence. When embeddings are enabled every token is an
     // output; otherwise only logits_index is (pass -1 to skip). Positions are
     // the token index, matching the profiles' layouts.
-    void decode(const std::vector<int32_t> & ids, int logits_index);
+    //
+    // With `keep`, the first `prefix` tokens come from a cached state checkpoint
+    // when one exists; otherwise they are decoded as their own batch and
+    // checkpointed, so later rows and requests over the same state skip their
+    // prefill. Either way the row scores the same.
+    void decode(const std::vector<int32_t> & ids, int logits_index, size_t prefix = 0, bool keep = false);
 
     // Valid until the next decode. Indexed by batch token position.
     const float * logits_at(int index) const;

@@ -159,7 +159,7 @@ public:
     }
 
     std::vector<double> score(const planned_row & row) const override {
-        back.decode(row.ids, -1);
+        back.decode(row.ids, -1, row.prefix, row.keep);
         const float * h_decide = back.embeddings_at(row.slot_rel);
         const std::vector<double> qv = project(head_q, h_decide);
         const double scale = 1.0 / std::sqrt((double) pointer_dim);
@@ -203,6 +203,7 @@ private:
         row.ids.insert(row.ids.begin(), id_prefix);
         const size_t limit = std::min(row.ids.size(), (size_t) std::max(0, back.max_length() - 1));
         row.ids.resize(limit);
+        row.prefix = row.ids.size();
 
         row.ids.push_back(id_middle);
         const std::vector<int32_t> instr = back.tokenize(kev_escape(instruction), true);

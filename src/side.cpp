@@ -112,7 +112,8 @@ json side_engine::predict(const json & requests, bool raw) const {
         std::vector<std::vector<double>> row_probs;
         row_probs.reserve(rows.size());
         int input_tokens = 0;
-        for (const auto & row : rows) {
+        for (auto & row : rows) {
+            row.keep = rows.size() > 1;   // every row of a request starts with its state
             input_tokens += (int) row.ids.size();
             row_probs.push_back(p->handler->score(row));
         }

@@ -1,5 +1,6 @@
 #include "dohnuts/side/runner.hpp"
 
+#include <list>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -8,6 +9,39 @@
 #include "llama.h"
 
 namespace dohnuts::side {
+namespace {
+
+// Hybrid Qwen3.5 memory keeps recurrent state that cannot be truncated to a
+// shorter prefix, so reuse goes through full sequence-state checkpoints (as in
+// pcdServer). A checkpoint of the 0.8B model is about 22 MB; shorter prefixes
+// are cheaper to decode again than to save.
+constexpr size_t PREFIX_MIN_TOKENS = 16;
+constexpr size_t PREFIX_CACHE_LIMIT = 256u * 1024 * 1024;
+
+struct checkpoint {
+    std::vector<int32_t> ids;
+    std::vector<uint8_t> state;
+};
+
+// Decodes ids[begin, end) at their own positions onto the current memory.
+void decode_range(llama_context * ctx, const std::vector<int32_t> & ids, size_t begin,
+                  size_t end, int logits_index, bool embeddings) {
+    auto batch = llama_batch_init((int32_t) (end - begin), 0, 1);
+    batch.n_tokens = (int32_t) (end - begin);
+    for (size_t i = begin; i < end; ++i) {
+        const size_t j = i - begin;
+        batch.token[j] = ids[i];
+        batch.pos[j] = (llama_pos) i;
+        batch.n_seq_id[j] = 1;
+        batch.seq_id[j][0] = 0;
+        batch.logits[j] = (!embeddings && (int) i == logits_index) ? 1 : 0;
+    }
+    const int rc = llama_decode(ctx, batch);
+    llama_batch_free(batch);
+    if (rc != 0) throw std::runtime_error("llama_decode failed");
+}
+
+} // namespace
 
 struct runner::impl {
     llama_model * model = nullptr;
@@ -18,6 +52,11 @@ struct runner::impl {
     int max_length = 4096;
     int gpu_layers = 0;
     bool embeddings = false;
+    int offset = 0;   // leading tokens of the last decode that preceded its output batch
+
+    // LRU of prefix checkpoints, front = most recently used.
+    std::list<checkpoint> cache;
+    size_t cache_bytes = 0;
 
     ~impl() {
         if (ctx) llama_free(ctx);
@@ -85,31 +124,60 @@ int runner::single_token(const std::string & text) const {
     return tokens[0];
 }
 
-void runner::decode(const std::vector<int32_t> & ids, int logits_index) {
+void runner::decode(const std::vector<int32_t> & ids, int logits_index, size_t prefix, bool keep) {
     if ((int) ids.size() > p->max_length) throw std::length_error("Input exceeds the token budget");
-    llama_memory_clear(llama_get_memory(p->ctx), true);
-    auto batch = llama_batch_init((int32_t) ids.size(), 0, 1);
-    batch.n_tokens = (int32_t) ids.size();
-    for (size_t i = 0; i < ids.size(); ++i) {
-        batch.token[i] = ids[i];
-        batch.pos[i] = (llama_pos) i;
-        batch.n_seq_id[i] = 1;
-        batch.seq_id[i][0] = 0;
-        batch.logits[i] = (!p->embeddings && (int) i == logits_index) ? 1 : 0;
+    llama_memory_t memory = llama_get_memory(p->ctx);
+    llama_memory_clear(memory, true);
+    p->offset = 0;
+    // The checkpoint must leave at least one token to decode for the outputs.
+    if (keep && prefix >= PREFIX_MIN_TOKENS && prefix < ids.size()) {
+        const std::vector<int32_t> key(ids.begin(), ids.begin() + (std::ptrdiff_t) prefix);
+        auto hit = std::find_if(p->cache.begin(), p->cache.end(),
+                                [&](const checkpoint & c) { return c.ids == key; });
+        if (hit != p->cache.end()) {
+            p->cache.splice(p->cache.begin(), p->cache, hit);
+            const auto & state = p->cache.front().state;
+            if (llama_state_seq_set_data_ext(p->ctx, state.data(), state.size(), 0, LLAMA_STATE_SEQ_FLAGS_NONE) == state.size()
+                && llama_memory_seq_pos_max(memory, 0) == (llama_pos) prefix - 1) {
+                p->offset = (int) prefix;
+            } else {
+                p->cache_bytes -= state.size();
+                p->cache.pop_front();
+                llama_memory_clear(memory, true);
+            }
+        }
+        if (p->offset == 0) {
+            decode_range(p->ctx, ids, 0, prefix, -1, p->embeddings);
+            p->offset = (int) prefix;
+            checkpoint entry{key, {}};
+            entry.state.resize(llama_state_seq_get_size_ext(p->ctx, 0, LLAMA_STATE_SEQ_FLAGS_NONE));
+            entry.state.resize(llama_state_seq_get_data_ext(p->ctx, entry.state.data(), entry.state.size(), 0,
+                                                            LLAMA_STATE_SEQ_FLAGS_NONE));
+            if (!entry.state.empty() && entry.state.size() <= PREFIX_CACHE_LIMIT) {
+                p->cache_bytes += entry.state.size();
+                p->cache.push_front(std::move(entry));
+                while (p->cache_bytes > PREFIX_CACHE_LIMIT) {
+                    p->cache_bytes -= p->cache.back().state.size();
+                    p->cache.pop_back();
+                }
+            }
+        }
     }
-    const int rc = llama_decode(p->ctx, batch);
-    llama_batch_free(batch);
-    if (rc != 0) throw std::runtime_error("llama_decode failed");
+    decode_range(p->ctx, ids, (size_t) p->offset, ids.size(), logits_index, p->embeddings);
 }
 
+// Outputs of the last decode are indexed from its first decoded token, so a
+// restored prefix shifts them.
 const float * runner::logits_at(int index) const {
-    const float * logits = llama_get_logits_ith(p->ctx, index);
+    if (index < p->offset) throw std::out_of_range("Logits requested inside the cached prefix");
+    const float * logits = llama_get_logits_ith(p->ctx, index - p->offset);
     if (!logits) throw std::runtime_error("Logits unavailable");
     return logits;
 }
 
 const float * runner::embeddings_at(int index) const {
-    const float * embeddings = llama_get_embeddings_ith(p->ctx, index);
+    if (index < p->offset) throw std::out_of_range("Embeddings requested inside the cached prefix");
+    const float * embeddings = llama_get_embeddings_ith(p->ctx, index - p->offset);
     if (!embeddings) throw std::runtime_error("Embeddings unavailable");
     return embeddings;
 }
