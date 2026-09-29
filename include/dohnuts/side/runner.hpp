@@ -19,6 +19,7 @@ struct runner_options {
     int gpu_layers = 0;
     int max_length = 4096;
     bool embeddings = false;   // kev needs hidden states; decider does not
+    bool flash_attn = false;
 };
 
 class runner {

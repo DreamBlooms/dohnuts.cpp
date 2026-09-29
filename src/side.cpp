@@ -67,6 +67,7 @@ side_engine::side_engine(const side_options & options) : p(std::make_unique<impl
     ropts.gpu_layers = options.gpu_layers;
     ropts.max_length = options.max_length;
     ropts.embeddings = p->kind == model_profile::kev;
+    ropts.flash_attn = options.flash_attn;
     p->backend = std::make_unique<side::runner>(ropts);
 
     if (p->kind == model_profile::kev) {

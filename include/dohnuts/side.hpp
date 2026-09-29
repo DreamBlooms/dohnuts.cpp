@@ -27,6 +27,7 @@ struct side_options {
     int gpu_layers = 0;
     std::string device;
     int max_length = 4096;
+    bool flash_attn = false;
 };
 
 class side_engine {

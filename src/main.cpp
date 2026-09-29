@@ -34,6 +34,7 @@ struct options {
     size_t max_questions = 8;
     bool batching = true;
     bool raw = false;
+    bool flash_attn = false;
     bool list_devices = false;
 };
 
@@ -53,7 +54,7 @@ json temperatures_from(const json & metadata) {
 void usage() {
     std::cerr << "usage: dohnuts-cli --model M.gguf --metadata M.json [--head H.f32] "
                  "[--mmproj MMPROJ.gguf] [--profile NAME] "
-                 "[--gpu-layers N] [--device NAME[,NAME]] [--threads N] "
+                 "[--gpu-layers N] [--device NAME[,NAME]] [--threads N] [--flash-attn] "
                  "[--server --host H --port P --api-key K --cors-origin ORIGIN "
                  "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n"
                  "       dohnuts-cli --list-devices\n"
@@ -89,6 +90,7 @@ int main(int argc, char ** argv) {
             else if (arg == "--device") opts.device = next();
             else if (arg == "--max-questions") opts.max_questions = std::stoul(next());
             else if (arg == "--no-batching") opts.batching = false;
+            else if (arg == "--flash-attn") opts.flash_attn = true;
             else if (arg == "--raw") opts.raw = true;
             else if (arg == "--list-devices") opts.list_devices = true;
             else { usage(); return 2; }
@@ -130,6 +132,7 @@ int main(int argc, char ** argv) {
             side_opts.threads = opts.threads;
             side_opts.gpu_layers = opts.gpu_layers;
             side_opts.device = opts.device;
+            side_opts.flash_attn = opts.flash_attn;
             auto eng = std::make_shared<dohnuts::side_engine>(side_opts);
             http.backend = eng->backend_name() + " on " + eng->device_name();
             auto predict = [eng, raw = opts.raw](const json & requests) {
@@ -167,6 +170,7 @@ int main(int argc, char ** argv) {
         engine_opts.threads = opts.threads;
         engine_opts.gpu_layers = opts.gpu_layers;
         engine_opts.device = opts.device;
+        engine_opts.flash_attn = opts.flash_attn;
         dohnuts::engine eng(engine_opts);
 
         dohnuts::predictor predict(eng, temperatures_from(metadata));
