@@ -1,3 +1,4 @@
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -7,6 +8,7 @@
 #include <nlohmann/json.hpp>
 
 #include "dohnuts/engine.hpp"
+#include "dohnuts/flash_attn.hpp"
 #include "dohnuts/http.hpp"
 #include "dohnuts/profile.hpp"
 #include "dohnuts/protocol.hpp"
@@ -34,7 +36,7 @@ struct options {
     size_t max_questions = 8;
     bool batching = true;
     bool raw = false;
-    bool flash_attn = false;
+    dohnuts::flash_attn_mode flash_attn = dohnuts::flash_attn_mode::automatic;
     bool list_devices = false;
 };
 
@@ -54,7 +56,8 @@ json temperatures_from(const json & metadata) {
 void usage() {
     std::cerr << "usage: dohnuts-cli --model M.gguf --metadata M.json [--head H.f32] "
                  "[--mmproj MMPROJ.gguf] [--profile NAME] "
-                 "[--gpu-layers N] [--device NAME[,NAME]] [--threads N] [--flash-attn] "
+                 "[--gpu-layers N] [--device NAME[,NAME]] [--threads N] "
+                 "[--flash-attn[=true|false|auto]] "
                  "[--server --host H --port P --api-key K --cors-origin ORIGIN "
                  "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n"
                  "       dohnuts-cli --list-devices\n"
@@ -90,7 +93,18 @@ int main(int argc, char ** argv) {
             else if (arg == "--device") opts.device = next();
             else if (arg == "--max-questions") opts.max_questions = std::stoul(next());
             else if (arg == "--no-batching") opts.batching = false;
-            else if (arg == "--flash-attn") opts.flash_attn = true;
+            else if (arg == "--flash-attn") opts.flash_attn = dohnuts::flash_attn_mode::enabled;
+            else if (arg.rfind("--flash-attn=", 0) == 0) {
+                const std::string value = arg.substr(std::strlen("--flash-attn="));
+                if (value == "true")
+                    opts.flash_attn = dohnuts::flash_attn_mode::enabled;
+                else if (value == "false")
+                    opts.flash_attn = dohnuts::flash_attn_mode::disabled;
+                else if (value == "auto")
+                    opts.flash_attn = dohnuts::flash_attn_mode::automatic;
+                else
+                    throw std::invalid_argument("--flash-attn expects true, false or auto");
+            }
             else if (arg == "--raw") opts.raw = true;
             else if (arg == "--list-devices") opts.list_devices = true;
             else { usage(); return 2; }

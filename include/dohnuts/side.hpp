@@ -11,6 +11,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "dohnuts/flash_attn.hpp"
 #include "dohnuts/profile.hpp"
 
 namespace dohnuts {
@@ -27,7 +28,7 @@ struct side_options {
     int gpu_layers = 0;
     std::string device;
     int max_length = 4096;
-    bool flash_attn = false;
+    flash_attn_mode flash_attn = flash_attn_mode::automatic;
 };
 
 class side_engine {

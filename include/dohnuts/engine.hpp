@@ -8,6 +8,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "dohnuts/flash_attn.hpp"
+
 namespace dohnuts {
 
 using json = nlohmann::ordered_json;
@@ -20,7 +22,7 @@ struct engine_options {
     int n_batch = 2048;     // Max tokens decoded in one pass.
     int gpu_layers = 0;     // Layers kept in VRAM; 0 is CPU only, negative is all.
     std::string device;     // Comma-separated ggml device names; empty uses the default.
-    bool flash_attn = false; // Use Flash Attention for the attention operation.
+    flash_attn_mode flash_attn = flash_attn_mode::automatic;
 };
 
 // Names of the compute devices compiled into this build, for --list-devices.

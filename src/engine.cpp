@@ -168,8 +168,7 @@ struct engine::impl {
         cparams.kv_unified = true;
         cparams.embeddings = true;
         cparams.pooling_type = LLAMA_POOLING_TYPE_NONE;
-        cparams.flash_attn_type = options.flash_attn ? LLAMA_FLASH_ATTN_TYPE_ENABLED
-                                                     : LLAMA_FLASH_ATTN_TYPE_AUTO;
+        cparams.flash_attn_type = to_llama_flash_attn(options.flash_attn);
         int threads = options.threads > 0 ? options.threads
                                           : (int) std::max(1u, std::thread::hardware_concurrency());
         cparams.n_threads = threads;

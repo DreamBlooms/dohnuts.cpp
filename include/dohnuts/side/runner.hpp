@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "dohnuts/flash_attn.hpp"
+
 namespace dohnuts::side {
 
 struct runner_options {
@@ -19,7 +21,7 @@ struct runner_options {
     int gpu_layers = 0;
     int max_length = 4096;
     bool embeddings = false;   // kev needs hidden states; decider does not
-    bool flash_attn = false;
+    flash_attn_mode flash_attn = flash_attn_mode::automatic;
 };
 
 class runner {
