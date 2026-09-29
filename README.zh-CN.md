@@ -10,8 +10,9 @@ Qwen3.5-0.8B 基座与合并后的 Dohnuts LoRA，以标量决策头对候选标
 概率分布；全程无需 GPU，也不生成文本。
 
 基座保留了冻结的视觉塔，配合额外的 mmproj 文件即可完成图像决策（见[视觉](#视觉)）。
-同一可执行文件还通过 profile 支持另外两个同类决策模型 `decider-0.8b` 与 `kev-0.8b`
-（见[其他决策模型](#其他决策模型)）。
+同一可执行文件还可运行更大的 Dohnuts 家族模型
+[Linnaeus-0.1.0-2B](#linnaeus-010-2b)，并通过 profile 支持 `decider` 与 `kev`
+两个同类决策模型系列（见[其他决策模型](#其他决策模型)）。
 
 ## 一条消息，多个决策
 
@@ -120,6 +121,30 @@ hf download DreamBlooms/Dohnuts-0.1.0-0.8B-GGUF \
   Dohnuts-0.1.0-0.8B-Q8_0.gguf head.f32 dohnuts.json --local-dir models
 ```
 
+### Linnaeus-0.1.0-2B
+
+[Linnaeus-0.1.0-2B](https://huggingface.co/DreamBlooms/Linnaeus-0.1.0-2B-GGUF)
+是 Dohnuts 家族的 2B 成员：基于 Qwen3.5-2B（Qwen/Qwen3.5-2B 加一个 rank-8 LoRA），
+采用相同的提示模板与标量头读出方式。其元数据声明了 `dohnuts` profile，因此将上述命令中的
+路径替换为 Linnaeus 的文件即可直接运行。
+
+| 文件 | 量化 |
+| --- | --- |
+| `Linnaeus-0.1.0-2B-F16.gguf` | F16 |
+| `Linnaeus-0.1.0-2B-Q8_0.gguf` | Q8_0 |
+| `Linnaeus-0.1.0-2B-Q4_K_M.gguf` | Q4_K_M |
+| `mmproj-Linnaeus-0.1.0-2B-bf16.gguf` | 视觉塔（BF16，可选） |
+
+与 Dohnuts 相同，任何量化版本都需搭配 `head.f32`（打分头）与 `linnaeus.json`（校准参数）：
+
+```sh
+hf download DreamBlooms/Linnaeus-0.1.0-2B-GGUF \
+  Linnaeus-0.1.0-2B-Q8_0.gguf head.f32 linnaeus.json --local-dir models
+```
+
+可使用 `scripts/build_linnaeus_gguf.sh` 从上游 adapter 重新构建：将 rank-8 LoRA 合并进
+Qwen/Qwen3.5-2B、导出打分头、以 `--no-mtp` 转换后再量化。
+
 ### 自己构建 GGUF
 
 发布的是紧凑 checkpoint，而非独立的语言模型。先将其合并进基座，再进行转换与量化：
@@ -190,13 +215,13 @@ Qwen3.5 为混合架构：18 层 gated delta net 与 6 层全注意力。CPU 上
 
 ## 其他决策模型
 
-CLI 还可运行两个决策模型，它们与 Dohnuts 共用 Qwen3.5-0.8B 基座，但使用各自的提示模板与
+CLI 还可运行 `decider` 与 `kev` 两个决策模型系列，它们使用与 Dohnuts 不同的提示模板与
 读出方式。二者以 profile 形式集成：Dohnuts 路径保持不变，且均不支持图像输入。
 
 | Profile | 模型 | 读出方式 | 权重 |
 | --- | --- | --- | --- |
-| `decider` | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | 在 `Answer: (` 槽位将 LM head 限制到选项字母 | 全量微调 |
-| `kev` | [jaredpalmer/kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head |
+| `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b)、[decider-2b](https://huggingface.co/Mapika/decider-2b) | 在 `Answer: (` 槽位将 LM head 限制到选项字母 | 全量微调 |
+| `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b)、[kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head |
 
 传入对应模型的配置文件作为 `--metadata` 即可；配置文件自身声明了 profile
 （`"profile": "decider"` 或 `"profile": "kev"`），无需额外开关。`--profile` 可覆盖文件中的
@@ -212,14 +237,18 @@ build/dohnuts-cli --model work/side/kev-0.8b-q8_0.gguf \
   --head work/side/kev-head.f32 --metadata work/side/kev.json
 ```
 
+更大的尺寸使用相同的参数，仅 GGUF、打分头与配置文件的路径不同。
+
 响应保留同一套核心字段（`type`、`choice`、`probabilities`、`noul`、`score`、
 `confidence`），客户端无需改动。各 profile 会在 `native` 下附加自身的统计量：decider 提供
 `certainty`，以及 isolated `score` 层级的 `legend`、`level_fit` 与 `fit_mass`；kev 提供其
 自身的 confidence。
 
 GGUF 转换产物与合并后的 kev 头发布于
-[DreamBlooms/decider-0.8b-GGUF](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF) 与
-[DreamBlooms/kev-0.8b-GGUF](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF)。可使用以下
+[DreamBlooms/decider-0.8b-GGUF](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF)、
+[DreamBlooms/decider-2b-GGUF](https://huggingface.co/DreamBlooms/decider-2b-GGUF)、
+[DreamBlooms/kev-0.8b-GGUF](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF) 与
+[DreamBlooms/kev-4b-GGUF](https://huggingface.co/DreamBlooms/kev-4b-GGUF)。可使用以下
 脚本从上游 checkpoint 重新构建：
 
 ```sh
@@ -231,8 +260,9 @@ scripts/build_kev_gguf.sh <Qwen3.5-0.8B-Base-dir> <kev-0.8b-dir> work/side
 ```
 
 两者均量化为 Q8_0。`kev` 会在 fp32 下先合并 LoRA 再转换，并写出 `kev-head.f32`
-（q 与 k 的 pointer 行及其偏置）与 `kev.json`。对于无法一次性载入内存的大型 checkpoint，
-可加 `--stream` 以逐张量低内存合并。
+（q 与 k 的 pointer 行及其偏置）与 `kev.json`。更大尺寸使用同一脚本并搭配对应的基座
+（decider-2b 用 Qwen3.5-2B，kev-4b 用 Qwen3.5-4B）；对于无法一次性载入内存的大型
+checkpoint，可加 `--stream` 以逐张量低内存合并。
 
 ## 实现方式
 

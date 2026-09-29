@@ -10,8 +10,9 @@ merged Dohnuts LoRA, scores candidate markers with the scalar decision head, and
 returns probabilities from a single forward pass. No GPU, no generation.
 
 The base keeps its frozen vision tower, so an optional mmproj file adds image
-decisions (see [Vision](#vision)). The same binary also runs two related decision
-models, `decider-0.8b` and `kev-0.8b`, through profiles (see
+decisions (see [Vision](#vision)). The same binary also runs a larger
+Dohnuts-family model, [Linnaeus-0.1.0-2B](#linnaeus-010-2b), and two related
+decision-model families, `decider` and `kev`, through profiles (see
 [Other decision models](#other-decision-models)).
 
 ## One message, several decisions
@@ -127,6 +128,32 @@ hf download DreamBlooms/Dohnuts-0.1.0-0.8B-GGUF \
   Dohnuts-0.1.0-0.8B-Q8_0.gguf head.f32 dohnuts.json --local-dir models
 ```
 
+### Linnaeus-0.1.0-2B
+
+[Linnaeus-0.1.0-2B](https://huggingface.co/DreamBlooms/Linnaeus-0.1.0-2B-GGUF) is
+a 2B member of the Dohnuts family: the same prompt and scalar-head readout, built
+on Qwen3.5-2B (Qwen/Qwen3.5-2B plus a rank-8 LoRA). Its metadata names the
+`dohnuts` profile, so the commands above work with the Linnaeus paths swapped in.
+
+| File | Quantization |
+| --- | --- |
+| `Linnaeus-0.1.0-2B-F16.gguf` | F16 |
+| `Linnaeus-0.1.0-2B-Q8_0.gguf` | Q8_0 |
+| `Linnaeus-0.1.0-2B-Q4_K_M.gguf` | Q4_K_M |
+| `mmproj-Linnaeus-0.1.0-2B-bf16.gguf` | Vision encoder (BF16, optional) |
+
+As with Dohnuts, every quantization needs `head.f32` (the scorer head) and
+`linnaeus.json` (calibration) alongside it:
+
+```sh
+hf download DreamBlooms/Linnaeus-0.1.0-2B-GGUF \
+  Linnaeus-0.1.0-2B-Q8_0.gguf head.f32 linnaeus.json --local-dir models
+```
+
+Rebuild the files from the upstream adapter with
+`scripts/build_linnaeus_gguf.sh`: merge the rank-8 LoRA into Qwen/Qwen3.5-2B,
+export the head, convert with `--no-mtp`, then quantize.
+
 ### Build the GGUF yourself
 
 The release ships a compact checkpoint, not a standalone language model. Merge it
@@ -205,14 +232,14 @@ length and reuse. The side models share the same cache.
 
 ## Other decision models
 
-The CLI also runs two decision models that share the Qwen3.5-0.8B backbone but
-use a different prompt and readout. They are profiles: the Dohnuts path is
+The CLI also runs two decision-model families, `decider` and `kev`, which use a
+different prompt and readout from Dohnuts. They are profiles: the Dohnuts path is
 untouched, and neither takes images.
 
-| Profile | Model | Readout | Weights |
+| Profile | Models | Readout | Weights |
 | --- | --- | --- | --- |
-| `decider` | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | LM head restricted to the option letters at an `Answer: (` slot | full fine-tune |
-| `kev` | [jaredpalmer/kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head |
+| `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b), [decider-2b](https://huggingface.co/Mapika/decider-2b) | LM head restricted to the option letters at an `Answer: (` slot | full fine-tune |
+| `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b), [kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head |
 
 Pass the matching model config as `--metadata`; the file names its own profile
 (`"profile": "decider"` or `"profile": "kev"`), so no flag is needed. `--profile`
@@ -229,16 +256,20 @@ build/dohnuts-cli --model work/side/kev-0.8b-q8_0.gguf \
   --head work/side/kev-head.f32 --metadata work/side/kev.json
 ```
 
+The same flags run the larger sizes; only the GGUF, head, and config paths change.
+
 The response keeps the same core fields (`type`, `choice`, `probabilities`,
 `noul`, `score`, `confidence`), so clients work unchanged. Each profile adds its
 native statistics under `native`: `certainty`, and `legend` / `level_fit` /
 `fit_mass` for isolated `score` levels on decider; the model's own confidence for
 kev.
 
-GGUF conversions and the merged kev head are published at
-[DreamBlooms/decider-0.8b-GGUF](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF)
-and [DreamBlooms/kev-0.8b-GGUF](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF).
-Rebuild them from the upstream checkpoints with:
+GGUF conversions and the merged kev heads are published at
+[DreamBlooms/decider-0.8b-GGUF](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF),
+[DreamBlooms/decider-2b-GGUF](https://huggingface.co/DreamBlooms/decider-2b-GGUF),
+[DreamBlooms/kev-0.8b-GGUF](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF), and
+[DreamBlooms/kev-4b-GGUF](https://huggingface.co/DreamBlooms/kev-4b-GGUF). Rebuild
+them from the upstream checkpoints with:
 
 ```sh
 # decider-0.8b: a full fine-tune, converted directly
@@ -250,8 +281,9 @@ scripts/build_kev_gguf.sh <Qwen3.5-0.8B-Base-dir> <kev-0.8b-dir> work/side
 
 Both exports are quantized to Q8_0. `kev` merges the LoRA in fp32 before
 conversion and writes `kev-head.f32` (the q and k pointer rows with their biases)
-plus `kev.json`. Pass `--stream` for a low-memory merge (one tensor at a time) on
-checkpoints too large to hold in RAM.
+plus `kev.json`. The same scripts handle the larger sizes with the matching base
+(Qwen3.5-2B for decider-2b, Qwen3.5-4B for kev-4b); pass `--stream` for a
+low-memory merge (one tensor at a time) on checkpoints too large to hold in RAM.
 
 ## How it works
 
