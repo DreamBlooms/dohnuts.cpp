@@ -60,6 +60,7 @@ public:
 
 // Builds the profile for a model, loading its config and weights.
 std::unique_ptr<profile> make_decider_profile(runner & backend, const json & config);
+std::unique_ptr<profile> make_tev1_profile(runner & backend, const json & config);
 std::unique_ptr<profile> make_kev_profile(runner & backend, const json & config,
                                           const std::filesystem::path & head_path);
 

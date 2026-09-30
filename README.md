@@ -11,8 +11,8 @@ returns probabilities from a single forward pass. No GPU, no generation.
 
 The base keeps its frozen vision tower, so an optional mmproj file adds image
 decisions (see [Vision](#vision)). The same binary also runs a larger
-Dohnuts-family model, [Linnaeus-0.1.0-2B](#linnaeus-010-2b), and two related
-decision-model families, `decider` and `kev`, through profiles (see
+Dohnuts-family model, [Linnaeus-0.1.0-2B](#linnaeus-010-2b), and three related
+decision-model families, `decider`, `kev` and `tev1`, through profiles (see
 [Other decision models](#other-decision-models)).
 
 ## One message, several decisions
@@ -232,19 +232,20 @@ length and reuse. The side models share the same cache.
 
 ## Other decision models
 
-The CLI also runs two decision-model families, `decider` and `kev`, which use a
-different prompt and readout from Dohnuts. They are profiles: the Dohnuts path is
-untouched, and neither takes images.
+The CLI also runs three decision-model families, `decider`, `kev` and `tev1`,
+which use a different prompt and readout from Dohnuts. They are profiles: the
+Dohnuts path is untouched, and none take images.
 
-| Profile | Models | Readout | Weights |
-| --- | --- | --- | --- |
-| `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b), [decider-2b](https://huggingface.co/Mapika/decider-2b) | LM head restricted to the option letters at an `Answer: (` slot | full fine-tune |
-| `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b), [kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head |
+| Profile | Models | Readout | Weights | GGUF |
+| --- | --- | --- | --- | --- |
+| `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b), [decider-2b](https://huggingface.co/Mapika/decider-2b) | LM head restricted to the option letters at an `Answer: (` slot | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF), [2b](https://huggingface.co/DreamBlooms/decider-2b-GGUF) |
+| `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b), [kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF), [4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
+| `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | LM head restricted to the option letters after the chat decision prompt | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
 
 Pass the matching model config as `--metadata`; the file names its own profile
-(`"profile": "decider"` or `"profile": "kev"`), so no flag is needed. `--profile`
-overrides the file, and `dohnuts` is the default. `kev` additionally needs
-`--head`:
+(`"profile": "decider"`, `"profile": "kev"` or `"profile": "tev1"`), so no flag is
+needed. `--profile` overrides the file, and `dohnuts` is the default. `kev`
+additionally needs `--head`:
 
 ```sh
 # decider: no scorer head, one temperature from decider.json
@@ -254,6 +255,10 @@ build/dohnuts-cli --model work/side/decider-0.8b-q8_0.gguf \
 # kev: bilinear head plus one temperature from kev.json
 build/dohnuts-cli --model work/side/kev-0.8b-q8_0.gguf \
   --head work/side/kev-head.f32 --metadata work/side/kev.json
+
+# tev1: no scorer head, one temperature from tev1.json
+build/dohnuts-cli --model work/side/tev1-0.8b-q8_0.gguf \
+  --metadata work/side/tev1.json
 ```
 
 The same flags run the larger sizes; only the GGUF, head, and config paths change.
@@ -261,15 +266,10 @@ The same flags run the larger sizes; only the GGUF, head, and config paths chang
 The response keeps the same core fields (`type`, `choice`, `probabilities`,
 `noul`, `score`, `confidence`), so clients work unchanged. Each profile adds its
 native statistics under `native`: `certainty`, and `legend` / `level_fit` /
-`fit_mass` for isolated `score` levels on decider; the model's own confidence for
-kev.
+`fit_mass` for isolated `score` levels on decider; `certainty` (with `legend` for
+`score`) on tev1; the model's own confidence for kev.
 
-GGUF conversions and the merged kev heads are published at
-[DreamBlooms/decider-0.8b-GGUF](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF),
-[DreamBlooms/decider-2b-GGUF](https://huggingface.co/DreamBlooms/decider-2b-GGUF),
-[DreamBlooms/kev-0.8b-GGUF](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF), and
-[DreamBlooms/kev-4b-GGUF](https://huggingface.co/DreamBlooms/kev-4b-GGUF). Rebuild
-them from the upstream checkpoints with:
+Rebuild them from the upstream checkpoints with:
 
 ```sh
 # decider-0.8b: a full fine-tune, converted directly
@@ -277,9 +277,12 @@ scripts/build_decider_gguf.sh <decider-0.8b-dir> work/side/decider-0.8b-q8_0.ggu
 
 # kev-0.8b: merge the LoRA into the base, export the head, then convert
 scripts/build_kev_gguf.sh <Qwen3.5-0.8B-Base-dir> <kev-0.8b-dir> work/side
+
+# tev1-0.8b: a full fine-tune, converted directly
+scripts/build_tev1_gguf.sh <tev1-0.8b-dir> work/side/tev1-0.8b-q8_0.gguf
 ```
 
-Both exports are quantized to Q8_0. `kev` merges the LoRA in fp32 before
+Every export is quantized to Q8_0. `kev` merges the LoRA in fp32 before
 conversion and writes `kev-head.f32` (the q and k pointer rows with their biases)
 plus `kev.json`. The same scripts handle the larger sizes with the matching base
 (Qwen3.5-2B for decider-2b, Qwen3.5-4B for kev-4b); pass `--stream` for a
@@ -301,9 +304,9 @@ core is unchanged:
 | Shared input prefix | common prefix decoded once, then `llama_memory_seq_cp` |
 | Frozen vision tower + merger | mtmd with `mmproj-dohnuts-0.1.0-bf16.gguf`; M-RoPE positions injected per image chunk |
 
-The side profiles use the same backend but their own readout: decider restricts
-the LM head to the option letters, and kev projects the decide and option-end
-hidden states through a bilinear pointer head.
+The side profiles use the same backend but their own readout: decider and tev1
+restrict the LM head to the option letters, and kev projects the decide and
+option-end hidden states through a bilinear pointer head.
 
 Norm weights are stored as `weight + 1`, matching the Dohnuts fused kernels.
 
@@ -314,12 +317,12 @@ include/dohnuts/engine.hpp    engine interface
 include/dohnuts/protocol.hpp  prompt rendering, calibration, predictor
 include/dohnuts/profile.hpp   side model profile switch
 include/dohnuts/side.hpp      side engine facade
-include/dohnuts/side/         runner, decider and kev profiles
+include/dohnuts/side/         runner, decider, kev and tev1 profiles
 include/dohnuts/http.hpp      HTTP transport
 src/engine.cpp                llama.cpp/mtmd wrapper: load, tokenize, batched scoring
 src/protocol.cpp              Dohnuts templates and answers
 src/side.cpp                  side profile dispatch
-src/side/                     shared runner and the two side profiles
+src/side/                     shared runner and the three side profiles
 src/http.cpp                  server routes and CORS
 src/main.cpp                  CLI and HTTP server
 scripts/                      setup, native/Windows builds, model export, GGUF

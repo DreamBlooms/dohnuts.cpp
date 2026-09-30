@@ -22,11 +22,11 @@ struct options {
     bool server = false;
     std::string host = "127.0.0.1";
     int port = 8080;
-    std::string profile;    // empty = detect from --metadata (dohnuts, decider or kev)
+    std::string profile;    // empty = detect from --metadata (dohnuts, decider, kev or tev1)
     std::string model;
     std::string head;       // dohnuts: head.f32; kev: kev-head.f32
     std::string mmproj;     // vision encoder; enables image input
-    std::string metadata;   // dohnuts.json (dohnuts) or decider.json / kev.json
+    std::string metadata;   // dohnuts.json (dohnuts) or decider/kev/tev1.json
     std::string input;      // JSONL file for CLI mode
     std::string api_key;
     std::string cors_origin = "*";
@@ -62,8 +62,9 @@ void usage() {
                  "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n"
                  "       dohnuts-cli --list-devices\n"
                  "\n"
-                 "The metadata file names its profile: dohnuts (default), decider or kev.\n"
-                 "dohnuts needs --head head.f32; kev needs --head kev-head.f32.\n";
+                 "The metadata file names its profile: dohnuts (default), decider, kev or tev1.\n"
+                 "dohnuts needs --head head.f32; kev needs --head kev-head.f32; "
+                 "decider and tev1 need none.\n";
 }
 
 } // namespace
@@ -115,15 +116,15 @@ int main(int argc, char ** argv) {
         }
         if (opts.model.empty() || opts.metadata.empty()) { usage(); return 2; }
 
-        // The metadata file names its profile ("dohnuts", "decider" or "kev");
-        // --profile overrides it. Unknown or missing defaults to dohnuts.
+        // The metadata file names its profile ("dohnuts", "decider", "kev" or
+        // "tev1"); --profile overrides it. Unknown or missing defaults to dohnuts.
         const json metadata = load_json(opts.metadata);
         std::string profile_name = opts.profile;
         if (profile_name.empty()) profile_name = metadata.value("profile", "dohnuts");
         const dohnuts::model_profile profile = dohnuts::profile_from_string(profile_name);
 
         // The predictor callback is the same shape for every profile; only the
-        // backend differs. Side profiles have no vision and require kev's head.
+        // backend differs. Side profiles have no vision; only kev needs a head.
         dohnuts::http_options http;
         http.host = opts.host;
         http.port = opts.port;

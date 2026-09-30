@@ -68,6 +68,7 @@ add_executable(dohnuts-cli
     src/side.cpp
     src/side/runner.cpp
     src/side/decider.cpp
+    src/side/tev1.cpp
     src/side/kev.cpp
     src/http.cpp
 )

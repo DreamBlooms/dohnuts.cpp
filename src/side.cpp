@@ -73,6 +73,8 @@ side_engine::side_engine(const side_options & options) : p(std::make_unique<impl
     if (p->kind == model_profile::kev) {
         if (options.head.empty()) throw std::runtime_error("Kev requires --head");
         p->handler = side::make_kev_profile(*p->backend, config, options.head);
+    } else if (p->kind == model_profile::tev1) {
+        p->handler = side::make_tev1_profile(*p->backend, config);
     } else {
         p->handler = side::make_decider_profile(*p->backend, config);
     }

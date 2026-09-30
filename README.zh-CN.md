@@ -11,8 +11,8 @@ Qwen3.5-0.8B 基座与合并后的 Dohnuts LoRA，以标量决策头对候选标
 
 基座保留了冻结的视觉塔，配合额外的 mmproj 文件即可完成图像决策（见[视觉](#视觉)）。
 同一可执行文件还可运行更大的 Dohnuts 家族模型
-[Linnaeus-0.1.0-2B](#linnaeus-010-2b)，并通过 profile 支持 `decider` 与 `kev`
-两个同类决策模型系列（见[其他决策模型](#其他决策模型)）。
+[Linnaeus-0.1.0-2B](#linnaeus-010-2b)，并通过 profile 支持 `decider`、`kev` 与 `tev1`
+三个同类决策模型系列（见[其他决策模型](#其他决策模型)）。
 
 ## 一条消息，多个决策
 
@@ -215,17 +215,18 @@ Qwen3.5 为混合架构：18 层 gated delta net 与 6 层全注意力。CPU 上
 
 ## 其他决策模型
 
-CLI 还可运行 `decider` 与 `kev` 两个决策模型系列，它们使用与 Dohnuts 不同的提示模板与
-读出方式。二者以 profile 形式集成：Dohnuts 路径保持不变，且均不支持图像输入。
+CLI 还可运行 `decider`、`kev` 与 `tev1` 三个决策模型系列，它们使用与 Dohnuts 不同的提示
+模板与读出方式。三者以 profile 形式集成：Dohnuts 路径保持不变，且均不支持图像输入。
 
-| Profile | 模型 | 读出方式 | 权重 |
-| --- | --- | --- | --- |
-| `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b)、[decider-2b](https://huggingface.co/Mapika/decider-2b) | 在 `Answer: (` 槽位将 LM head 限制到选项字母 | 全量微调 |
-| `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b)、[kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head |
+| Profile | 模型 | 读出方式 | 权重 | GGUF |
+| --- | --- | --- | --- | --- |
+| `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b)、[decider-2b](https://huggingface.co/Mapika/decider-2b) | 在 `Answer: (` 槽位将 LM head 限制到选项字母 | 全量微调 | [0.8b](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF)、[2b](https://huggingface.co/DreamBlooms/decider-2b-GGUF) |
+| `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b)、[kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF)、[4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
+| `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | 在 chat 决策提示后把 LM head 限制到选项字母 | 全量微调 | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
 
 传入对应模型的配置文件作为 `--metadata` 即可；配置文件自身声明了 profile
-（`"profile": "decider"` 或 `"profile": "kev"`），无需额外开关。`--profile` 可覆盖文件中的
-声明，默认值为 `dohnuts`。`kev` 还需额外传入 `--head`：
+（`"profile": "decider"`、`"profile": "kev"` 或 `"profile": "tev1"`），无需额外开关。
+`--profile` 可覆盖文件中的声明，默认值为 `dohnuts`。`kev` 还需额外传入 `--head`：
 
 ```sh
 # decider：无需打分头，温度来自 decider.json
@@ -235,21 +236,20 @@ build/dohnuts-cli --model work/side/decider-0.8b-q8_0.gguf \
 # kev：双线性头 + kev.json 中的温度
 build/dohnuts-cli --model work/side/kev-0.8b-q8_0.gguf \
   --head work/side/kev-head.f32 --metadata work/side/kev.json
+
+# tev1：无需打分头，温度来自 tev1.json
+build/dohnuts-cli --model work/side/tev1-0.8b-q8_0.gguf \
+  --metadata work/side/tev1.json
 ```
 
 更大的尺寸使用相同的参数，仅 GGUF、打分头与配置文件的路径不同。
 
 响应保留同一套核心字段（`type`、`choice`、`probabilities`、`noul`、`score`、
 `confidence`），客户端无需改动。各 profile 会在 `native` 下附加自身的统计量：decider 提供
-`certainty`，以及 isolated `score` 层级的 `legend`、`level_fit` 与 `fit_mass`；kev 提供其
-自身的 confidence。
+`certainty`，以及 isolated `score` 层级的 `legend`、`level_fit` 与 `fit_mass`；tev1 提供
+`certainty`（`score` 额外提供 `legend`）；kev 提供其自身的 confidence。
 
-GGUF 转换产物与合并后的 kev 头发布于
-[DreamBlooms/decider-0.8b-GGUF](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF)、
-[DreamBlooms/decider-2b-GGUF](https://huggingface.co/DreamBlooms/decider-2b-GGUF)、
-[DreamBlooms/kev-0.8b-GGUF](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF) 与
-[DreamBlooms/kev-4b-GGUF](https://huggingface.co/DreamBlooms/kev-4b-GGUF)。可使用以下
-脚本从上游 checkpoint 重新构建：
+可使用以下脚本从上游 checkpoint 重新构建：
 
 ```sh
 # decider-0.8b：全量微调，直接转换
@@ -257,9 +257,12 @@ scripts/build_decider_gguf.sh <decider-0.8b-dir> work/side/decider-0.8b-q8_0.ggu
 
 # kev-0.8b：先将 LoRA 合并进基座、导出头，再转换
 scripts/build_kev_gguf.sh <Qwen3.5-0.8B-Base-dir> <kev-0.8b-dir> work/side
+
+# tev1-0.8b：全量微调，直接转换
+scripts/build_tev1_gguf.sh <tev1-0.8b-dir> work/side/tev1-0.8b-q8_0.gguf
 ```
 
-两者均量化为 Q8_0。`kev` 会在 fp32 下先合并 LoRA 再转换，并写出 `kev-head.f32`
+三者均量化为 Q8_0。`kev` 会在 fp32 下先合并 LoRA 再转换，并写出 `kev-head.f32`
 （q 与 k 的 pointer 行及其偏置）与 `kev.json`。更大尺寸使用同一脚本并搭配对应的基座
 （decider-2b 用 Qwen3.5-2B，kev-4b 用 Qwen3.5-4B）；对于无法一次性载入内存的大型
 checkpoint，可加 `--stream` 以逐张量低内存合并。
@@ -279,8 +282,8 @@ softmax。llama.cpp 已支持该架构（`qwen35`），并通过公共 API 暴�
 | 共享输入前缀 | 公共前缀只算一次，再用 `llama_memory_seq_cp` 复用 |
 | 冻结视觉塔 + merger | mtmd 加载 `mmproj-dohnuts-0.1.0-bf16.gguf`，逐图像块注入 M-RoPE 位置 |
 
-side profile 复用同一后端，但拥有各自的读出方式：decider 将 LM head 限制到选项字母，kev
-则将 decide 与选项结束处的隐状态通过双线性 pointer head 投影。
+side profile 复用同一后端，但拥有各自的读出方式：decider 与 tev1 将 LM head 限制到选项
+字母，kev 则将 decide 与选项结束处的隐状态通过双线性 pointer head 投影。
 
 归一化权重以 `weight + 1` 的形式存储，与 Dohnuts 的融合算子保持一致。
 
@@ -291,12 +294,12 @@ include/dohnuts/engine.hpp    引擎接口
 include/dohnuts/protocol.hpp  提示渲染、校准、predictor
 include/dohnuts/profile.hpp   side 模型 profile 开关
 include/dohnuts/side.hpp      side 引擎门面
-include/dohnuts/side/         runner、decider 与 kev profile
+include/dohnuts/side/         runner、decider、kev 与 tev1 profile
 include/dohnuts/http.hpp      HTTP 传输层
 src/engine.cpp                llama.cpp/mtmd 封装：加载、tokenize、批量打分
 src/protocol.cpp              Dohnuts 模板与答案
 src/side.cpp                  side profile 分发
-src/side/                     共享 runner 与两个 side profile
+src/side/                     共享 runner 与三个 side profile
 src/http.cpp                  服务路由与 CORS
 src/main.cpp                  CLI 与 HTTP 服务
 scripts/                      环境安装、原生/Windows 构建、模型导出与 GGUF
