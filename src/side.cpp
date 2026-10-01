@@ -75,6 +75,8 @@ side_engine::side_engine(const side_options & options) : p(std::make_unique<impl
         p->handler = side::make_kev_profile(*p->backend, config, options.head);
     } else if (p->kind == model_profile::tev1) {
         p->handler = side::make_tev1_profile(*p->backend, config);
+    } else if (p->kind == model_profile::thisthat) {
+        p->handler = side::make_thisthat_profile(*p->backend, config);
     } else {
         p->handler = side::make_decider_profile(*p->backend, config);
     }
@@ -109,8 +111,7 @@ json side_engine::predict(const json & requests, bool raw) const {
 
         std::vector<side::planned_row> rows;
         std::vector<side::planned_question> plan;
-        for (auto it = questions.begin(); it != questions.end(); ++it)
-            p->handler->plan(it.key(), state, it.value(), rows, plan);
+        p->handler->plan_request(state, questions, rows, plan);
 
         std::vector<std::vector<double>> row_probs;
         row_probs.reserve(rows.size());

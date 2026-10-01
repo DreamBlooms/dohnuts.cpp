@@ -4,15 +4,17 @@
 #
 # Usage:
 #   scripts/compare/compare.sh decider <model.gguf> <decider.json> <decider-dir>
+#   scripts/compare/compare.sh thisthat <model.gguf> <thisthat.json> <thisthat-dir>
 #   scripts/compare/compare.sh kev <model.gguf> <kev.json> <kev-dir> <head.f32>
 #
 # The reference runs need their upstream packages importable:
 #   decider: the `decider/` folder inside the model download
+#   thisthat: pip install of github.com/FLock-io/this-that-model (or THISTHAT_SRC)
 #   kev:     a checkout of github.com/jaredpalmer/kev (its parent dir is searched)
 # Set PYTHON to pick the interpreter (default: python3).
 set -euo pipefail
 
-PROFILE=${1:?decider or kev}
+PROFILE=${1:?decider, thisthat or kev}
 GGUF=${2:?gguf}
 META=${3:?metadata json}
 MODEL_DIR=${4:?pytorch model directory}
@@ -30,6 +32,9 @@ echo "==> dohnuts.cpp ($PROFILE)"
 if [ "$PROFILE" = "decider" ]; then
     echo "==> PyTorch reference"
     "$PYTHON" "$DIR/ref_decider.py" "$MODEL_DIR" "$CASES" > "$DIR/py_$PROFILE.jsonl"
+elif [ "$PROFILE" = "thisthat" ]; then
+    echo "==> PyTorch reference"
+    "$PYTHON" "$DIR/ref_thisthat.py" "$MODEL_DIR" "$CASES" > "$DIR/py_$PROFILE.jsonl"
 else
     echo "==> PyTorch reference"
     "$PYTHON" "$DIR/ref_kev.py" "$MODEL_DIR" "$CASES" > "$DIR/py_$PROFILE.jsonl"

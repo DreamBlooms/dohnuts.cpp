@@ -11,9 +11,9 @@ returns probabilities from a single forward pass. No GPU, no generation.
 
 The base keeps its frozen vision tower, so an optional mmproj file adds image
 decisions (see [Vision](#vision)). The same binary also runs a larger
-Dohnuts-family model, [Linnaeus-0.1.0-2B](#linnaeus-010-2b), and three related
-decision-model families, `decider`, `kev` and `tev1`, through profiles (see
-[Other decision models](#other-decision-models)).
+Dohnuts-family model, [Linnaeus-0.1.0-2B](#linnaeus-010-2b), and four related
+decision-model families, `decider`, `thisthat`, `kev` and `tev1`, through
+profiles (see [Other decision models](#other-decision-models)).
 
 ## One message, several decisions
 
@@ -232,20 +232,21 @@ length and reuse. The side models share the same cache.
 
 ## Other decision models
 
-The CLI also runs three decision-model families, `decider`, `kev` and `tev1`,
-which use a different prompt and readout from Dohnuts. They are profiles: the
-Dohnuts path is untouched, and none take images.
+The CLI also runs four decision-model families, `decider`, `thisthat`, `kev`
+and `tev1`, which use a different prompt and readout from Dohnuts. They are
+profiles: the Dohnuts path is untouched, and none take images.
 
 | Profile | Models | Readout | Weights | GGUF |
 | --- | --- | --- | --- | --- |
 | `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b), [decider-2b](https://huggingface.co/Mapika/decider-2b) | LM head restricted to the option letters at an `Answer: (` slot | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF), [2b](https://huggingface.co/DreamBlooms/decider-2b-GGUF) |
+| `thisthat` | [this-that-model-1.2](https://huggingface.co/flock-io/this-that-model-1.2) | LM head restricted to the option labels at each question's `Answer: (` slot, all questions in one pass | full fine-tune | [1.2](https://huggingface.co/DreamBlooms/this-that-model-1.2-GGUF) |
 | `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b), [kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF), [4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
 | `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | LM head restricted to the option letters after the chat decision prompt | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
 
 Pass the matching model config as `--metadata`; the file names its own profile
-(`"profile": "decider"`, `"profile": "kev"` or `"profile": "tev1"`), so no flag is
-needed. `--profile` overrides the file, and `dohnuts` is the default. `kev`
-additionally needs `--head`:
+(`"profile": "decider"`, `"profile": "thisthat"`, `"profile": "kev"` or
+`"profile": "tev1"`), so no flag is needed. `--profile` overrides the file, and
+`dohnuts` is the default. `kev` additionally needs `--head`:
 
 ```sh
 # decider: no scorer head, one temperature from decider.json
@@ -255,6 +256,10 @@ build/dohnuts-cli --model work/side/decider-0.8b-q8_0.gguf \
 # kev: bilinear head plus one temperature from kev.json
 build/dohnuts-cli --model work/side/kev-0.8b-q8_0.gguf \
   --head work/side/kev-head.f32 --metadata work/side/kev.json
+
+# thisthat: no scorer head, one temperature from thisthat.json
+build/dohnuts-cli --model work/side/thisthat-1.2-q8_0.gguf \
+  --metadata work/side/thisthat.json
 
 # tev1: no scorer head, one temperature from tev1.json
 build/dohnuts-cli --model work/side/tev1-0.8b-q8_0.gguf \
@@ -267,7 +272,7 @@ The response keeps the same core fields (`type`, `choice`, `probabilities`,
 `noul`, `score`, `confidence`), so clients work unchanged. Each profile adds its
 native statistics under `native`: `certainty`, and `legend` / `level_fit` /
 `fit_mass` for isolated `score` levels on decider; `certainty` (with `legend` for
-`score`) on tev1; the model's own confidence for kev.
+`score`) on thisthat and tev1; the model's own confidence for kev.
 
 Rebuild them from the upstream checkpoints with:
 
@@ -277,6 +282,9 @@ scripts/build_decider_gguf.sh <decider-0.8b-dir> work/side/decider-0.8b-q8_0.ggu
 
 # kev-0.8b: merge the LoRA into the base, export the head, then convert
 scripts/build_kev_gguf.sh <Qwen3.5-0.8B-Base-dir> <kev-0.8b-dir> work/side
+
+# thisthat-1.2: a full fine-tune, converted directly
+scripts/build_thisthat_gguf.sh <thisthat-1.2-dir> work/side/thisthat-1.2-q8_0.gguf
 
 # tev1-0.8b: a full fine-tune, converted directly
 scripts/build_tev1_gguf.sh <tev1-0.8b-dir> work/side/tev1-0.8b-q8_0.gguf
@@ -304,9 +312,12 @@ core is unchanged:
 | Shared input prefix | common prefix decoded once, then `llama_memory_seq_cp` |
 | Frozen vision tower + merger | mtmd with `mmproj-dohnuts-0.1.0-bf16.gguf`; M-RoPE positions injected per image chunk |
 
-The side profiles use the same backend but their own readout: decider and tev1
-restrict the LM head to the option letters, and kev projects the decide and
-option-end hidden states through a bilinear pointer head.
+The side profiles use the same backend but their own readout: decider, thisthat
+and tev1 restrict the LM head to the option labels, and kev projects the decide
+and option-end hidden states through a bilinear pointer head. decider, thisthat
+and tev1 share the single-token label table and the letter-restricted softmax;
+thisthat also folds a request's questions into one prompt, one answer slot each,
+and reads them in one pass.
 
 Norm weights are stored as `weight + 1`, matching the Dohnuts fused kernels.
 
@@ -317,12 +328,12 @@ include/dohnuts/engine.hpp    engine interface
 include/dohnuts/protocol.hpp  prompt rendering, calibration, predictor
 include/dohnuts/profile.hpp   side model profile switch
 include/dohnuts/side.hpp      side engine facade
-include/dohnuts/side/         runner, decider, kev and tev1 profiles
+include/dohnuts/side/         runner, decider, thisthat, kev and tev1 profiles
 include/dohnuts/http.hpp      HTTP transport
 src/engine.cpp                llama.cpp/mtmd wrapper: load, tokenize, batched scoring
 src/protocol.cpp              Dohnuts templates and answers
 src/side.cpp                  side profile dispatch
-src/side/                     shared runner and the three side profiles
+src/side/                     shared runner and the four side profiles
 src/http.cpp                  server routes and CORS
 src/main.cpp                  CLI and HTTP server
 scripts/                      setup, native/Windows builds, model export, GGUF

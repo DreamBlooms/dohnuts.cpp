@@ -13,9 +13,11 @@ enum class model_profile {
     decider,   // LM head: option-letter logits read at the "Answer: (" slot
     kev,       // bilinear pointer head over the decide and option-end markers
     tev1,      // LM head: option-letter logits after the chat decision prompt
+    thisthat,  // LM head: option-letter logits at the "Answer: (" slot of the typed prompt
 };
 
-// Parses "dohnuts", "decider", "kev" or "tev1". Throws std::invalid_argument otherwise.
+// Parses "dohnuts", "decider", "kev", "tev1" or "thisthat". Throws
+// std::invalid_argument otherwise.
 model_profile profile_from_string(const std::string & value);
 
 // The canonical name used in metadata and diagnostics.

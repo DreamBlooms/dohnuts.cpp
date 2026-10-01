@@ -14,6 +14,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "dohnuts/side/runner.hpp"
+
 namespace dohnuts::side {
 
 using json = nlohmann::ordered_json;
@@ -91,6 +93,34 @@ inline std::string replace_all(std::string text, const std::string & from, const
     for (size_t pos = text.find(from); pos != std::string::npos; pos = text.find(from, pos + to.size()))
         text.replace(pos, from.size(), to);
     return text;
+}
+
+// The single-token option labels shared by every LM-head profile (decider,
+// thisthat, tev1). Labels are A..Z first, so a narrow question renders exactly
+// as it did before wide questions existed, then the two-letter combinations the
+// tokenizer happens to encode as one token. Every label must be one token: the
+// readout scores one position per answer, so a two-token label would put half
+// the answer where nothing is looking.
+inline std::vector<int32_t> build_single_token_labels(runner & back, size_t max_labels,
+                                                      const char * who) {
+    const std::string upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    std::vector<std::string> candidates;
+    for (char c : upper) candidates.push_back(std::string(1, c));
+    for (char a : upper)
+        for (char b : upper) candidates.push_back(std::string(1, a) + std::string(1, b));
+    std::vector<int32_t> labels;
+    for (const auto & name : candidates) {
+        if (labels.size() >= max_labels) break;
+        const auto ids = back.tokenize(name, false);
+        if (ids.size() == 1) labels.push_back(ids[0]);
+    }
+    if (labels.size() < max_labels)
+        throw std::runtime_error(std::string("Tokenize cannot express every ") + who + " label");
+    std::vector<int32_t> sorted = labels;
+    std::sort(sorted.begin(), sorted.end());
+    if (std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end())
+        throw std::runtime_error(std::string(who) + " label tokens are not unique");
+    return labels;
 }
 
 } // namespace dohnuts::side

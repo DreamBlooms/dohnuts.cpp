@@ -148,22 +148,7 @@ public:
 
 private:
     void build_letters() {
-        const std::string U = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        std::vector<std::string> candidates;
-        for (char c : U) candidates.push_back(std::string(1, c));
-        for (char a : U)
-            for (char b : U) candidates.push_back(std::string(1, a) + std::string(1, b));
-        for (const auto & label : candidates) {
-            if (letters.size() >= MAX_OPTIONS) break;
-            const auto ids = back.tokenize(label, false);
-            if (ids.size() == 1) letters.push_back(ids[0]);
-        }
-        std::vector<int32_t> sorted = letters;
-        std::sort(sorted.begin(), sorted.end());
-        if (sorted.size() < MAX_OPTIONS)
-            throw std::runtime_error("Tokenize cannot express every Tev1 label");
-        if (std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end())
-            throw std::runtime_error("Tev1 label tokens are not unique");
+        letters = build_single_token_labels(back, MAX_OPTIONS, "Tev1");
     }
 
     runner & back;

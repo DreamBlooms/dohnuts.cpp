@@ -9,6 +9,7 @@ model_profile profile_from_string(const std::string & value) {
     if (value == "decider") return model_profile::decider;
     if (value == "kev") return model_profile::kev;
     if (value == "tev1") return model_profile::tev1;
+    if (value == "thisthat") return model_profile::thisthat;
     throw std::invalid_argument("Unknown profile: " + value);
 }
 
@@ -17,6 +18,7 @@ const char * profile_name(model_profile profile) {
         case model_profile::decider: return "decider";
         case model_profile::kev: return "kev";
         case model_profile::tev1: return "tev1";
+        case model_profile::thisthat: return "thisthat";
         default: return "dohnuts";
     }
 }

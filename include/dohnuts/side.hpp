@@ -1,6 +1,7 @@
-// Side decision-model support (decider, kev). These profiles share the Qwen3.5
-// backbone with Dohnuts but replace the readout and prompt entirely, so they
-// live here rather than in the core engine. The core engine is untouched.
+// Side decision-model support (decider, thisthat, tev1, kev). These profiles
+// share the Qwen3.5 backbone with Dohnuts but replace the readout and prompt
+// entirely, so they live here rather than in the core engine. The core engine
+// is untouched.
 #pragma once
 
 #include <cstdint>

@@ -46,6 +46,16 @@ public:
                       std::vector<planned_row> & rows,
                       std::vector<planned_question> & questions) const = 0;
 
+    // Plans every question of one request. The default calls plan() once per
+    // question; thisthat overrides it because its prompt numbers the questions
+    // and shares one context across them.
+    virtual void plan_request(const json & state, const json & questions,
+                              std::vector<planned_row> & rows,
+                              std::vector<planned_question> & out) const {
+        for (auto it = questions.begin(); it != questions.end(); ++it)
+            plan(it.key(), state, it.value(), rows, out);
+    }
+
     // Scores one row: a probability distribution over its options.
     virtual std::vector<double> score(const planned_row & row) const = 0;
 
@@ -61,6 +71,7 @@ public:
 // Builds the profile for a model, loading its config and weights.
 std::unique_ptr<profile> make_decider_profile(runner & backend, const json & config);
 std::unique_ptr<profile> make_tev1_profile(runner & backend, const json & config);
+std::unique_ptr<profile> make_thisthat_profile(runner & backend, const json & config);
 std::unique_ptr<profile> make_kev_profile(runner & backend, const json & config,
                                           const std::filesystem::path & head_path);
 

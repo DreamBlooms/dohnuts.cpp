@@ -62,9 +62,10 @@ void usage() {
                  "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n"
                  "       dohnuts-cli --list-devices\n"
                  "\n"
-                 "The metadata file names its profile: dohnuts (default), decider, kev or tev1.\n"
+                 "The metadata file names its profile: dohnuts (default), decider, "
+                 "thisthat, kev or tev1.\n"
                  "dohnuts needs --head head.f32; kev needs --head kev-head.f32; "
-                 "decider and tev1 need none.\n";
+                 "decider, thisthat and tev1 need none.\n";
 }
 
 } // namespace
@@ -116,8 +117,9 @@ int main(int argc, char ** argv) {
         }
         if (opts.model.empty() || opts.metadata.empty()) { usage(); return 2; }
 
-        // The metadata file names its profile ("dohnuts", "decider", "kev" or
-        // "tev1"); --profile overrides it. Unknown or missing defaults to dohnuts.
+        // The metadata file names its profile ("dohnuts", "decider", "thisthat",
+        // "kev" or "tev1"); --profile overrides it. Unknown or missing defaults
+        // to dohnuts.
         const json metadata = load_json(opts.metadata);
         std::string profile_name = opts.profile;
         if (profile_name.empty()) profile_name = metadata.value("profile", "dohnuts");

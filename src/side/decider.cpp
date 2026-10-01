@@ -222,19 +222,7 @@ private:
     }
 
     void build_letters() {
-        const std::string U = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        std::vector<std::string> names;
-        for (char c : U) names.push_back(std::string(1, c));
-        for (char a : U)
-            for (char b : U) names.push_back(std::string(1, a) + std::string(1, b));
-        for (const auto & name : names) {
-            if ((int) letters.size() >= 255) break;
-            if (back.tokenize(name, false).size() == 1) letters.push_back(back.tokenize(name, false)[0]);
-        }
-        std::vector<int32_t> sorted = letters;
-        std::sort(sorted.begin(), sorted.end());
-        if (std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end())
-            throw std::runtime_error("Letter label tokens are not unique");
+        letters = build_single_token_labels(back, 255, "decider");
         open_paren = back.tokenize("\n(", false);
     }
 
