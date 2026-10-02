@@ -63,9 +63,9 @@ void usage() {
                  "       dohnuts-cli --list-devices\n"
                  "\n"
                  "The metadata file names its profile: dohnuts (default), decider, "
-                 "thisthat, kev or tev1.\n"
-                 "dohnuts needs --head head.f32; kev needs --head kev-head.f32; "
-                 "decider, thisthat and tev1 need none.\n";
+                 "thisthat, kev, tev1, jet, jpt or neohorsejev.\n"
+                 "dohnuts needs --head head.f32; kev and neohorsejev need --head kev-head.f32; "
+                 "decider, thisthat, tev1, jet and jpt need none.\n";
 }
 
 } // namespace
@@ -137,8 +137,10 @@ int main(int argc, char ** argv) {
         http.batching = opts.batching;
 
         if (profile != dohnuts::model_profile::dohnuts) {
-            if (profile == dohnuts::model_profile::kev && opts.head.empty()) {
-                std::cerr << "error: kev requires --head\n";
+            const bool needs_head = profile == dohnuts::model_profile::kev
+                                 || profile == dohnuts::model_profile::neohorsejev;
+            if (needs_head && opts.head.empty()) {
+                std::cerr << "error: " << profile_name << " requires --head\n";
                 return 2;
             }
             dohnuts::side_options side_opts;

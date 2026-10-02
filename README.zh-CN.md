@@ -11,8 +11,8 @@ Qwen3.5-0.8B 基座与合并后的 Dohnuts LoRA，以标量决策头对候选标
 
 基座保留了冻结的视觉塔，配合额外的 mmproj 文件即可完成图像决策（见[视觉](#视觉)）。
 同一可执行文件还可运行更大的 Dohnuts 家族模型
-[Linnaeus-0.1.0-2B](#linnaeus-010-2b)，并通过 profile 支持 `decider`、`thisthat`、`kev` 与
-`tev1` 四个同类决策模型系列（见[其他决策模型](#其他决策模型)）。
+[Linnaeus-0.1.0-2B](#linnaeus-010-2b)，以及 `decider`、`thisthat`、`kev` 等决策模型
+（见[其他决策模型](#其他决策模型)）。
 
 ## 一条消息，多个决策
 
@@ -215,8 +215,8 @@ Qwen3.5 为混合架构：18 层 gated delta net 与 6 层全注意力。CPU 上
 
 ## 其他决策模型
 
-CLI 还可运行 `decider`、`thisthat`、`kev` 与 `tev1` 四个决策模型系列，它们使用与 Dohnuts
-不同的提示模板与读出方式。四者以 profile 形式集成：Dohnuts 路径保持不变，且均不支持图像
+CLI 还可运行 `decider`、`thisthat`、`kev`、`tev1`、`jet`、`jpt` 与 `neohorsejev` 七个决策模型
+系列，它们使用与 Dohnuts 不同的提示模板与读出方式。七者以 profile 形式集成：Dohnuts 路径保持不变，且均不支持图像
 输入。
 
 | Profile | 模型 | 读出方式 | 权重 | GGUF |
@@ -225,11 +225,15 @@ CLI 还可运行 `decider`、`thisthat`、`kev` 与 `tev1` 四个决策模型系
 | `thisthat` | [this-that-model-1.2](https://huggingface.co/flock-io/this-that-model-1.2) | 在每个问题的 `Answer: (` 槽位将 LM head 限制到选项标签，所有问题共用一趟前向 | 全量微调 | [1.2](https://huggingface.co/DreamBlooms/this-that-model-1.2-GGUF) |
 | `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b)、[kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF)、[4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
 | `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | 在 chat 决策提示后把 LM head 限制到选项字母 | 全量微调 | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
+| `jet` | [jet](https://huggingface.co/michaljach/jet) | 在 chat 决策提示后把 LM head 限制到选项标签，按题型各用一个温度 | 全量微调 | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
+| `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | 在 chat 决策提示后把 LM head 限制到选项标签 | LoRA 合并 | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
+| `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | 对 decide 与选项结束标记做双线性 pointer head，每题一行、共享 state 前缀 | LoRA 合并 + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
 
 传入对应模型的配置文件作为 `--metadata` 即可；配置文件自身声明了 profile
-（`"profile": "decider"`、`"profile": "thisthat"`、`"profile": "kev"` 或
-`"profile": "tev1"`），无需额外开关。`--profile` 可覆盖文件中的声明，默认值为
-`dohnuts`。`kev` 还需额外传入 `--head`：
+（`"profile": "decider"`、`"profile": "thisthat"`、`"profile": "kev"`、
+`"profile": "tev1"`、`"profile": "jet"`、`"profile": "jpt"` 或
+`"profile": "neohorsejev"`），无需额外开关。`--profile` 可覆盖文件中的声明，默认值为
+`dohnuts`。`kev` 与 `neohorsejev` 还需额外传入 `--head`：
 
 ```sh
 # decider：无需打分头，温度来自 decider.json
@@ -247,6 +251,18 @@ build/dohnuts-cli --model work/side/thisthat-1.2-q8_0.gguf \
 # tev1：无需打分头，温度来自 tev1.json
 build/dohnuts-cli --model work/side/tev1-0.8b-q8_0.gguf \
   --metadata work/side/tev1.json
+
+# jet：无需打分头，按题型温度来自 jet.json
+build/dohnuts-cli --model work/side/jet-4b-q8_0.gguf \
+  --metadata work/side/jet.json
+
+# jpt：无需打分头，温度来自 jpt.json
+build/dohnuts-cli --model work/side/jpt-4b-q8_0.gguf \
+  --metadata work/side/jpt.json
+
+# neohorsejev：双线性头 + neohorsejev.json 中的温度
+build/dohnuts-cli --model work/side/neohorsejev-4b-q8_0.gguf \
+  --head work/side/neohorsejev-head.f32 --metadata work/side/neohorsejev.json
 ```
 
 更大的尺寸使用相同的参数，仅 GGUF、打分头与配置文件的路径不同。
@@ -254,7 +270,9 @@ build/dohnuts-cli --model work/side/tev1-0.8b-q8_0.gguf \
 响应保留同一套核心字段（`type`、`choice`、`probabilities`、`noul`、`score`、
 `confidence`），客户端无需改动。各 profile 会在 `native` 下附加自身的统计量：decider 提供
 `certainty`，以及 isolated `score` 层级的 `legend`、`level_fit` 与 `fit_mass`；thisthat 与
-tev1 提供 `certainty`（`score` 额外提供 `legend`）；kev 提供其自身的 confidence。
+tev1 提供 `certainty`（`score` 额外提供 `legend`）；kev 提供其自身的 confidence；`jet` 与
+`jpt` 提供 `certainty`（`score` 额外提供 `legend`）；`neohorsejev` 提供其自身的语义 confidence
+（`score` 为 `level`，其余为线性 choice 置信）。
 
 可使用以下脚本从上游 checkpoint 重新构建：
 
@@ -270,6 +288,17 @@ scripts/build_thisthat_gguf.sh <thisthat-1.2-dir> work/side/thisthat-1.2-q8_0.gg
 
 # tev1-0.8b：全量微调，直接转换
 scripts/build_tev1_gguf.sh <tev1-0.8b-dir> work/side/tev1-0.8b-q8_0.gguf
+
+# jet：全量微调，直接转换
+scripts/build_jet_gguf.sh <jet-dir> work/side/jet-4b-q8_0.gguf
+
+# jpt-4b：LoRA 合并版，直接转换
+scripts/build_jpt_gguf.sh <jpt-4b-dir> work/side/jpt-4b-q8_0.gguf
+
+# neohorsejev-4b：先转换 backbone，再导出 pointer head
+scripts/build_neohorsejev_gguf.sh <NeoHorse-Jev-4B-dir> work/side
+python3 scripts/export_neohorsejev_head.py <NeoHorse-Jev-4B>/pointer_head.safetensors \
+  work/side/neohorsejev-head.f32
 ```
 
 四者均量化为 Q8_0。`kev` 会在 fp32 下先合并 LoRA 再转换，并写出 `kev-head.f32`

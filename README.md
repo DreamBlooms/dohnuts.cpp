@@ -10,10 +10,10 @@ merged Dohnuts LoRA, scores candidate markers with the scalar decision head, and
 returns probabilities from a single forward pass. No GPU, no generation.
 
 The base keeps its frozen vision tower, so an optional mmproj file adds image
-decisions (see [Vision](#vision)). The same binary also runs a larger
-Dohnuts-family model, [Linnaeus-0.1.0-2B](#linnaeus-010-2b), and four related
-decision-model families, `decider`, `thisthat`, `kev` and `tev1`, through
-profiles (see [Other decision models](#other-decision-models)).
+decisions (see [Vision](#vision)). The same binary also runs the larger
+Dohnuts-family model [Linnaeus-0.1.0-2B](#linnaeus-010-2b) and other decision
+models such as `decider`, `thisthat` and `kev` through profiles (see
+[Other decision models](#other-decision-models)).
 
 ## One message, several decisions
 
@@ -232,7 +232,7 @@ length and reuse. The side models share the same cache.
 
 ## Other decision models
 
-The CLI also runs four decision-model families, `decider`, `thisthat`, `kev`
+The CLI also runs seven decision-model families, `decider`, `thisthat`, `kev`
 and `tev1`, which use a different prompt and readout from Dohnuts. They are
 profiles: the Dohnuts path is untouched, and none take images.
 
@@ -242,11 +242,16 @@ profiles: the Dohnuts path is untouched, and none take images.
 | `thisthat` | [this-that-model-1.2](https://huggingface.co/flock-io/this-that-model-1.2) | LM head restricted to the option labels at each question's `Answer: (` slot, all questions in one pass | full fine-tune | [1.2](https://huggingface.co/DreamBlooms/this-that-model-1.2-GGUF) |
 | `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b), [kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF), [4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
 | `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | LM head restricted to the option letters after the chat decision prompt | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
+| `jet` | [jet](https://huggingface.co/michaljach/jet) | LM head restricted to the option labels after the chat decision prompt, one temperature per question type | full fine-tune | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
+| `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | LM head restricted to the option labels after the chat decision prompt | LoRA merged | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
+| `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | bilinear pointer head over the decide and option-end markers, one row per question over a shared state prefix | LoRA merged + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
 
 Pass the matching model config as `--metadata`; the file names its own profile
-(`"profile": "decider"`, `"profile": "thisthat"`, `"profile": "kev"` or
-`"profile": "tev1"`), so no flag is needed. `--profile` overrides the file, and
-`dohnuts` is the default. `kev` additionally needs `--head`:
+(`"profile": "decider"`, `"profile": "thisthat"`, `"profile": "kev"`,
+`"profile": "tev1"`, `"profile": "jet"`, `"profile": "jpt"` or
+`"profile": "neohorsejev"`), so no flag is needed. `--profile` overrides the
+file, and `dohnuts` is the default. `kev` and `neohorsejev` additionally need
+`--head`:
 
 ```sh
 # decider: no scorer head, one temperature from decider.json
@@ -264,6 +269,18 @@ build/dohnuts-cli --model work/side/thisthat-1.2-q8_0.gguf \
 # tev1: no scorer head, one temperature from tev1.json
 build/dohnuts-cli --model work/side/tev1-0.8b-q8_0.gguf \
   --metadata work/side/tev1.json
+
+# jet: no scorer head, one temperature per question type from jet.json
+build/dohnuts-cli --model work/side/jet-4b-q8_0.gguf \
+  --metadata work/side/jet.json
+
+# jpt: no scorer head, one temperature from jpt.json
+build/dohnuts-cli --model work/side/jpt-4b-q8_0.gguf \
+  --metadata work/side/jpt.json
+
+# neohorsejev: bilinear head plus one temperature from neohorsejev.json
+build/dohnuts-cli --model work/side/neohorsejev-4b-q8_0.gguf \
+  --head work/side/neohorsejev-head.f32 --metadata work/side/neohorsejev.json
 ```
 
 The same flags run the larger sizes; only the GGUF, head, and config paths change.
@@ -272,7 +289,9 @@ The response keeps the same core fields (`type`, `choice`, `probabilities`,
 `noul`, `score`, `confidence`), so clients work unchanged. Each profile adds its
 native statistics under `native`: `certainty`, and `legend` / `level_fit` /
 `fit_mass` for isolated `score` levels on decider; `certainty` (with `legend` for
-`score`) on thisthat and tev1; the model's own confidence for kev.
+`score`) on thisthat and tev1; the model's own confidence for kev; `jet` and
+`jpt` add `certainty` (with `legend` for `score`); `neohorsejev` reports its own
+semantic confidence (`level` for `score`, the linear choice score otherwise).
 
 Rebuild them from the upstream checkpoints with:
 
@@ -288,6 +307,17 @@ scripts/build_thisthat_gguf.sh <thisthat-1.2-dir> work/side/thisthat-1.2-q8_0.gg
 
 # tev1-0.8b: a full fine-tune, converted directly
 scripts/build_tev1_gguf.sh <tev1-0.8b-dir> work/side/tev1-0.8b-q8_0.gguf
+
+# jet: a full fine-tune, converted directly
+scripts/build_jet_gguf.sh <jet-dir> work/side/jet-4b-q8_0.gguf
+
+# jpt-4b: a merged LoRA, converted directly
+scripts/build_jpt_gguf.sh <jpt-4b-dir> work/side/jpt-4b-q8_0.gguf
+
+# neohorsejev-4b: convert the backbone, then export the pointer head
+scripts/build_neohorsejev_gguf.sh <NeoHorse-Jev-4B-dir> work/side
+python3 scripts/export_neohorsejev_head.py <NeoHorse-Jev-4B>/pointer_head.safetensors \
+  work/side/neohorsejev-head.f32
 ```
 
 Every export is quantized to Q8_0. `kev` merges the LoRA in fp32 before

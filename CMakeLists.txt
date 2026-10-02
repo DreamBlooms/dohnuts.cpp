@@ -71,6 +71,9 @@ add_executable(dohnuts-cli
     src/side/tev1.cpp
     src/side/thisthat.cpp
     src/side/kev.cpp
+    src/side/jet.cpp
+    src/side/jpt.cpp
+    src/side/neohorsejev.cpp
     src/http.cpp
 )
 target_include_directories(dohnuts-cli PRIVATE

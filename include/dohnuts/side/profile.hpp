@@ -24,6 +24,7 @@ struct planned_row {
     std::vector<int> letters;      // per-option label token ids (decider)
     size_t prefix = 0;             // leading state tokens, shared by rows of one request
     bool keep = false;             // reuse or checkpoint the prefix (multi-row requests)
+    double temperature = 0.0;      // per-row override (jet fits one temperature per type); 0 = profile default
 };
 
 // One request question; a Score question may expand to several rows.
@@ -72,6 +73,10 @@ public:
 std::unique_ptr<profile> make_decider_profile(runner & backend, const json & config);
 std::unique_ptr<profile> make_tev1_profile(runner & backend, const json & config);
 std::unique_ptr<profile> make_thisthat_profile(runner & backend, const json & config);
+std::unique_ptr<profile> make_jet_profile(runner & backend, const json & config);
+std::unique_ptr<profile> make_jpt_profile(runner & backend, const json & config);
+std::unique_ptr<profile> make_neohorsejev_profile(runner & backend, const json & config,
+                                               const std::filesystem::path & head_path);
 std::unique_ptr<profile> make_kev_profile(runner & backend, const json & config,
                                           const std::filesystem::path & head_path);
 

@@ -10,6 +10,9 @@ model_profile profile_from_string(const std::string & value) {
     if (value == "kev") return model_profile::kev;
     if (value == "tev1") return model_profile::tev1;
     if (value == "thisthat") return model_profile::thisthat;
+    if (value == "jet") return model_profile::jet;
+    if (value == "jpt") return model_profile::jpt;
+    if (value == "neohorsejev") return model_profile::neohorsejev;
     throw std::invalid_argument("Unknown profile: " + value);
 }
 
@@ -19,6 +22,9 @@ const char * profile_name(model_profile profile) {
         case model_profile::kev: return "kev";
         case model_profile::tev1: return "tev1";
         case model_profile::thisthat: return "thisthat";
+        case model_profile::jet: return "jet";
+        case model_profile::jpt: return "jpt";
+        case model_profile::neohorsejev: return "neohorsejev";
         default: return "dohnuts";
     }
 }
