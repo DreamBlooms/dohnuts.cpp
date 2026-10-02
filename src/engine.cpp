@@ -1,5 +1,7 @@
 #include "dohnuts/engine.hpp"
 
+#include "dohnuts/sys.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -169,8 +171,7 @@ struct engine::impl {
         cparams.embeddings = true;
         cparams.pooling_type = LLAMA_POOLING_TYPE_NONE;
         cparams.flash_attn_type = to_llama_flash_attn(options.flash_attn);
-        int threads = options.threads > 0 ? options.threads
-                                          : (int) std::max(1u, std::thread::hardware_concurrency());
+        int threads = options.threads > 0 ? options.threads : physical_core_count();
         cparams.n_threads = threads;
         cparams.n_threads_batch = threads;
         ctx = llama_init_from_model(model, cparams);

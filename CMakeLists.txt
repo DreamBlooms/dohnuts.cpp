@@ -63,6 +63,7 @@ find_package(Threads REQUIRED)
 add_executable(dohnuts-cli
     src/main.cpp
     src/engine.cpp
+    src/sys.cpp
     src/protocol.cpp
     src/profile.cpp
     src/side.cpp

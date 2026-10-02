@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "dohnuts/prefix_cache.hpp"
+#include "dohnuts/sys.hpp"
 #include "dohnuts/side/common.hpp"
 #include "llama.h"
 
@@ -84,8 +85,7 @@ runner::runner(const runner_options & options) : p(std::make_unique<impl>()) {
     cparams.embeddings = p->embeddings;
     cparams.pooling_type = LLAMA_POOLING_TYPE_NONE;
     cparams.flash_attn_type = to_llama_flash_attn(options.flash_attn);
-    const int threads = options.threads > 0 ? options.threads
-                                            : (int) std::max(1u, std::thread::hardware_concurrency());
+    const int threads = options.threads > 0 ? options.threads : physical_core_count();
     cparams.n_threads = threads;
     cparams.n_threads_batch = threads;
     p->ctx = llama_init_from_model(p->model, cparams);
