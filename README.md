@@ -15,6 +15,12 @@ Dohnuts-family model [Linnaeus-0.1.0-2B](#linnaeus-010-2b) and other decision
 models such as `decider`, `thisthat` and `kev` through profiles (see
 [Other decision models](#other-decision-models)).
 
+> [!NOTE]
+> 🎉 For models that the llama.cpp server already supports, prefer
+> [`llama-server`](https://github.com/ggml-org/llama.cpp/pull/29818). dohnuts.cpp
+> is expected to stay focused on the Dohnuts family and on early support for
+> small side models.
+
 ## One message, several decisions
 
 Serve the model:
