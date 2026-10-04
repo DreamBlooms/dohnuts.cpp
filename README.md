@@ -17,7 +17,7 @@ models such as `decider`, `thisthat` and `kev` through profiles (see
 
 > [!NOTE]
 > 🎉 For models that the llama.cpp server already supports, prefer
-> [`llama-server`](https://github.com/ggml-org/llama.cpp/pull/29818). dohnuts.cpp
+> [`llama-server`](https://huggingface.co/blog/ggml-org/decision-models-in-llamacpp). dohnuts.cpp
 > is expected to stay focused on the Dohnuts family and on early support for
 > small side models.
 
