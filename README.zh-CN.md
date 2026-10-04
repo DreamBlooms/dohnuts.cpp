@@ -16,7 +16,7 @@ Qwen3.5-0.8B 基座与合并后的 Dohnuts LoRA，以标量决策头对候选标
 
 > [!NOTE]
 > 🎉 对于 llama.cpp server 已支持的模型，建议优先使用
-> [`llama-server`](https://github.com/ggml-org/llama.cpp/pull/29818)。dohnuts.cpp
+> [`llama-server`](https://huggingface.co/blog/ggml-org/decision-models-in-llamacpp)。dohnuts.cpp
 > 后续可能保持维护，专注 Dohnuts 家族与小规模 side 模型的早期支持。
 
 ## 一条消息，多个决策
