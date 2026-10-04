@@ -14,6 +14,7 @@ if(NOT EXISTS "${LLAMA_DIR}/CMakeLists.txt")
         "llama.cpp not found at ${LLAMA_DIR}. Run: git submodule update --init --depth 1")
 endif()
 
+set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
