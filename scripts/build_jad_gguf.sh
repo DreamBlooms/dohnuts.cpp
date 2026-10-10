@@ -30,7 +30,7 @@ fi
 
 echo "==> converting the LLaDA-MoE base to f16 GGUF"
 "$PYTHON" "$LLAMA/convert_hf_to_gguf.py" "$BASE" \
-    --outfile "$WORK/jad-base-f16.gguf" --outtype f16 --trust-remote-code
+    --outfile "$WORK/jad-base-f16.gguf" --outtype f16
 
 echo "==> converting the JAD LoRA to GGUF"
 "$PYTHON" "$LLAMA/convert_lora_to_gguf.py" "$CHECKPOINT" \

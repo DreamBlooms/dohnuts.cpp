@@ -252,7 +252,7 @@ take images.
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | LM head restricted to the option labels after the chat decision prompt, one temperature per question type | full fine-tune | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
 | `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | LM head restricted to the option labels after the chat decision prompt | LoRA merged | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
 | `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | bilinear pointer head over the decide and option-end markers, one row per question over a shared state prefix | LoRA merged + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
-| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | LM head restricted to the option letters at a single mask slot in the assistant turn (LLaDA-MoE masked diffusion) | LoRA merged | early preview |
+| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | LM head restricted to the option letters at a single mask slot in the assistant turn (LLaDA-MoE masked diffusion) | LoRA merged | [Q8_0](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
 
 Pass the matching model config as `--metadata`; the file names its own profile
 (`"profile": "decider"`, `"profile": "thisthat"`, `"profile": "kev"`,
@@ -290,8 +290,8 @@ build/dohnuts-cli --model work/side/jpt-4b-q8_0.gguf \
 build/dohnuts-cli --model work/side/neohorsejev-4b-q8_0.gguf \
   --head work/side/neohorsejev-head.f32 --metadata work/side/neohorsejev.json
 
-# jad: no scorer head; a LLaDA-MoE masked-diffusion read (8k context from jad.json)
-build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-Q8_0.gguf \
+# jad: no scorer head; a LLaDA-MoE masked-diffusion read (4k context from jad.json)
+build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-EarlyPreview-Q8_0.gguf \
   --metadata work/side/jad.json
 ```
 
@@ -333,7 +333,7 @@ python3 scripts/export_neohorsejev_head.py <NeoHorse-Jev-4B>/pointer_head.safete
   work/side/neohorsejev-head.f32
 
 # jad: merge the LoRA into LLaDA-MoE-7B-A1B, then convert directly
-scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-Q8_0.gguf
+scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-EarlyPreview-Q8_0.gguf
 ```
 
 Every export is quantized to Q8_0. `kev` merges the LoRA in fp32 before
@@ -369,7 +369,7 @@ and reads them in one pass.
 diffusion model: instead of the next-token logits, it drops a single mask token
 into the assistant turn and reads the option letters off that slot in one
 non-causal forward (the same structured read ifreflex runs on LLaDA-MoE). It uses
-the base LM head, so no scorer head is needed, and takes its 8k context from
+the base LM head, so no scorer head is needed, and takes its 4k context from
 `jad.json`.
 
 Norm weights are stored as `weight + 1`, matching the Dohnuts fused kernels.

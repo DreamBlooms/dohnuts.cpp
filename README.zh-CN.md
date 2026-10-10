@@ -233,7 +233,7 @@ CLI 还可运行 `decider`、`thisthat`、`kev`、`tev1`、`jet`、`jpt`、`neoh
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | 在 chat 决策提示后把 LM head 限制到选项标签，按题型各用一个温度 | 全量微调 | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
 | `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | 在 chat 决策提示后把 LM head 限制到选项标签 | LoRA 合并 | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
 | `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | 对 decide 与选项结束标记做双线性 pointer head，每题一行、共享 state 前缀 | LoRA 合并 + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
-| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | 在助手轮的单个 mask 槽位把 LM head 限制到选项字母（LLaDA-MoE 掩码扩散） | LoRA 合并 | 早期预览 |
+| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | 在助手轮的单个 mask 槽位把 LM head 限制到选项字母（LLaDA-MoE 掩码扩散） | LoRA 合并 | [Q8_0](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
 
 传入对应模型的配置文件作为 `--metadata` 即可；配置文件自身声明了 profile
 （`"profile": "decider"`、`"profile": "thisthat"`、`"profile": "kev"`、
@@ -270,8 +270,8 @@ build/dohnuts-cli --model work/side/jpt-4b-q8_0.gguf \
 build/dohnuts-cli --model work/side/neohorsejev-4b-q8_0.gguf \
   --head work/side/neohorsejev-head.f32 --metadata work/side/neohorsejev.json
 
-# jad：无打分头；LLaDA-MoE 掩码扩散读出（jad.json 给出 8k 上下文）
-build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-Q8_0.gguf \
+# jad：无打分头；LLaDA-MoE 掩码扩散读出（jad.json 给出 4k 上下文）
+build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-EarlyPreview-Q8_0.gguf \
   --metadata work/side/jad.json
 ```
 
@@ -311,7 +311,7 @@ python3 scripts/export_neohorsejev_head.py <NeoHorse-Jev-4B>/pointer_head.safete
   work/side/neohorsejev-head.f32
 
 # jad：先将 LoRA 合并进 LLaDA-MoE-7B-A1B，再直接转换
-scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-Q8_0.gguf
+scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-EarlyPreview-Q8_0.gguf
 ```
 
 四者均量化为 Q8_0。`kev` 会在 fp32 下先合并 LoRA 再转换，并写出 `kev-head.f32`
@@ -342,7 +342,7 @@ thisthat 与 tev1 共用单 token 标签表与字母受限 softmax；thisthat �
 `jad` 是唯一一个非因果（non-causal）的 profile。其 checkpoint 是 LLaDA-MoE——一个掩码
 扩散模型：它不用 next-token logits，而是在助手轮放入一个 mask token，对整段序列做一次非因果
 前向，从该槽位读出选项字母（与 ifreflex 对 LLaDA-MoE 的结构化读出一致）。它使用基座 LM head，
-因此无需打分头，8k 上下文由 `jad.json` 给出。
+因此无需打分头，4k 上下文由 `jad.json` 给出。
 
 归一化权重以 `weight + 1` 的形式存储，与 Dohnuts 的融合算子保持一致。
 
