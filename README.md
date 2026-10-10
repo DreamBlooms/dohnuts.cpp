@@ -246,13 +246,13 @@ take images.
 | Profile | Models | Readout | Weights | GGUF |
 | --- | --- | --- | --- | --- |
 | `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b), [decider-2b](https://huggingface.co/Mapika/decider-2b) | LM head restricted to the option letters at an `Answer: (` slot | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF), [2b](https://huggingface.co/DreamBlooms/decider-2b-GGUF) |
-| `thisthat` | [this-that-model-1.2](https://huggingface.co/flock-io/this-that-model-1.2) | LM head restricted to the option labels at each question's `Answer: (` slot, all questions in one pass | full fine-tune | [1.2](https://huggingface.co/DreamBlooms/this-that-model-1.2-GGUF) |
+| `thisthat` | [this-that-model-1.2](https://huggingface.co/flock-io/this-that-model-1.2) | LM head restricted to the option labels at each question's `Answer: (` slot, all questions in one pass | full fine-tune | [2b(1.2)](https://huggingface.co/DreamBlooms/this-that-model-1.2-GGUF) |
 | `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b), [kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF), [4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
 | `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | LM head restricted to the option letters after the chat decision prompt | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | LM head restricted to the option labels after the chat decision prompt, one temperature per question type | full fine-tune | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
 | `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | LM head restricted to the option labels after the chat decision prompt | LoRA merged | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
 | `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | bilinear pointer head over the decide and option-end markers, one row per question over a shared state prefix | LoRA merged + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
-| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | LM head restricted to the option letters at a single mask slot in the assistant turn (LLaDA-MoE masked diffusion) | LoRA merged | [Q8_0](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
+| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | LM head restricted to the option letters at a single mask slot in the assistant turn (LLaDA-MoE masked diffusion) | LoRA merged | [7b-A1b(EarlyPreview)](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
 
 Pass the matching model config as `--metadata`; the file names its own profile
 (`"profile": "decider"`, `"profile": "thisthat"`, `"profile": "kev"`,
