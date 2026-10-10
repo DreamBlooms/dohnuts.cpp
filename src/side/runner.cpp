@@ -41,6 +41,8 @@ struct runner::impl {
     int max_length = 4096;
     int gpu_layers = 0;
     bool embeddings = false;
+    bool diffusion = false;
+    int mask_id = -1;
     int offset = 0;   // leading tokens of the last decode that preceded its output batch
 
     // Cross-request LRU of decoded prefixes, keyed by the exact prefix tokens.
@@ -76,11 +78,18 @@ runner::runner(const runner_options & options) : p(std::make_unique<impl>()) {
     p->hidden = llama_model_n_embd(p->model);
     p->max_length = options.max_length;
     p->embeddings = options.embeddings;
+    p->diffusion = options.diffusion;
+    p->mask_id = llama_vocab_mask(p->vocab);
+    if (p->diffusion && p->mask_id < 0)
+        throw std::runtime_error("Model has no mask token (not a masked-diffusion model)");
 
     auto cparams = llama_context_default_params();
     cparams.n_ctx = p->max_length;
     cparams.n_batch = std::max(options.n_batch, p->max_length);
-    cparams.n_ubatch = std::min(std::max(options.n_batch, 1), p->max_length);
+    // A non-causal read attends over the whole sequence at once, so it must fit
+    // in one ubatch; the causal profiles keep the smaller ubatch.
+    cparams.n_ubatch = p->diffusion ? p->max_length
+                                    : std::min(std::max(options.n_batch, 1), p->max_length);
     cparams.n_seq_max = 1;
     cparams.embeddings = p->embeddings;
     cparams.pooling_type = LLAMA_POOLING_TYPE_NONE;
@@ -151,6 +160,30 @@ const float * runner::logits_at(int index) const {
     const float * logits = llama_get_logits_ith(p->ctx, index - p->offset);
     if (!logits) throw std::runtime_error("Logits unavailable");
     return logits;
+}
+
+int runner::mask_id() const { return p->mask_id; }
+
+void runner::decode_canvas(const std::vector<int32_t> & ids, int read_index) {
+    if ((int) ids.size() > p->max_length) throw std::length_error("Input exceeds the token budget");
+    llama_memory_t memory = llama_get_memory(p->ctx);
+    llama_memory_clear(memory, true);
+    p->offset = 0;
+
+    llama_set_causal_attn(p->ctx, false);
+    auto batch = llama_batch_init((int32_t) ids.size(), 0, 1);
+    batch.n_tokens = (int32_t) ids.size();
+    for (size_t i = 0; i < ids.size(); ++i) {
+        batch.token[i] = ids[i];
+        batch.pos[i] = (llama_pos) i;
+        batch.n_seq_id[i] = 1;
+        batch.seq_id[i][0] = 0;
+        batch.logits[i] = ((int) i == read_index) ? 1 : 0;
+    }
+    const int rc = llama_decode(p->ctx, batch);
+    llama_batch_free(batch);
+    llama_set_causal_attn(p->ctx, true);
+    if (rc != 0) throw std::runtime_error("llama_decode failed");
 }
 
 const float * runner::embeddings_at(int index) const {

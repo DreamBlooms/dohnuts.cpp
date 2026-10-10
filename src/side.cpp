@@ -65,12 +65,16 @@ side_engine::side_engine(const side_options & options) : p(std::make_unique<impl
     ropts.threads = options.threads;
     ropts.n_batch = options.n_batch;
     ropts.gpu_layers = options.gpu_layers;
-    ropts.max_length = options.max_length;
+    ropts.max_length = options.max_length > 0 ? options.max_length
+                                              : config.value("max_length", 4096);
     ropts.embeddings = p->kind == model_profile::kev || p->kind == model_profile::neohorsejev;
+    ropts.diffusion = p->kind == model_profile::jad;
     ropts.flash_attn = options.flash_attn;
     p->backend = std::make_unique<side::runner>(ropts);
 
-    if (p->kind == model_profile::kev) {
+    if (p->kind == model_profile::jad) {
+        p->handler = side::make_jad_profile(*p->backend, config);
+    } else if (p->kind == model_profile::kev) {
         if (options.head.empty()) throw std::runtime_error("Kev requires --head");
         p->handler = side::make_kev_profile(*p->backend, config, options.head);
     } else if (p->kind == model_profile::neohorsejev) {

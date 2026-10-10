@@ -220,9 +220,9 @@ Qwen3.5 为混合架构：18 层 gated delta net 与 6 层全注意力。CPU 上
 
 ## 其他决策模型
 
-CLI 还可运行 `decider`、`thisthat`、`kev`、`tev1`、`jet`、`jpt` 与 `neohorsejev` 七个决策模型
-系列，它们使用与 Dohnuts 不同的提示模板与读出方式。七者以 profile 形式集成：Dohnuts 路径保持不变，且均不支持图像
-输入。
+CLI 还可运行 `decider`、`thisthat`、`kev`、`tev1`、`jet`、`jpt`、`neohorsejev` 与
+`jad` 等决策模型系列，它们使用与 Dohnuts 不同的提示模板与读出方式。它们均以 profile 形式
+集成：Dohnuts 路径保持不变，且都不支持图像输入。
 
 | Profile | 模型 | 读出方式 | 权重 | GGUF |
 | --- | --- | --- | --- | --- |
@@ -233,11 +233,12 @@ CLI 还可运行 `decider`、`thisthat`、`kev`、`tev1`、`jet`、`jpt` 与 `ne
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | 在 chat 决策提示后把 LM head 限制到选项标签，按题型各用一个温度 | 全量微调 | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
 | `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | 在 chat 决策提示后把 LM head 限制到选项标签 | LoRA 合并 | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
 | `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | 对 decide 与选项结束标记做双线性 pointer head，每题一行、共享 state 前缀 | LoRA 合并 + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
+| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | 在助手轮的单个 mask 槽位把 LM head 限制到选项字母（LLaDA-MoE 掩码扩散） | LoRA 合并 | 早期预览 |
 
 传入对应模型的配置文件作为 `--metadata` 即可；配置文件自身声明了 profile
 （`"profile": "decider"`、`"profile": "thisthat"`、`"profile": "kev"`、
-`"profile": "tev1"`、`"profile": "jet"`、`"profile": "jpt"` 或
-`"profile": "neohorsejev"`），无需额外开关。`--profile` 可覆盖文件中的声明，默认值为
+`"profile": "tev1"`、`"profile": "jet"`、`"profile": "jpt"`、
+`"profile": "neohorsejev"` 或 `"profile": "jad"`），无需额外开关。`--profile` 可覆盖文件中的声明，默认值为
 `dohnuts`。`kev` 与 `neohorsejev` 还需额外传入 `--head`：
 
 ```sh
@@ -268,6 +269,10 @@ build/dohnuts-cli --model work/side/jpt-4b-q8_0.gguf \
 # neohorsejev：双线性头 + neohorsejev.json 中的温度
 build/dohnuts-cli --model work/side/neohorsejev-4b-q8_0.gguf \
   --head work/side/neohorsejev-head.f32 --metadata work/side/neohorsejev.json
+
+# jad：无打分头；LLaDA-MoE 掩码扩散读出（jad.json 给出 8k 上下文）
+build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-Q8_0.gguf \
+  --metadata work/side/jad.json
 ```
 
 更大的尺寸使用相同的参数，仅 GGUF、打分头与配置文件的路径不同。
@@ -277,7 +282,7 @@ build/dohnuts-cli --model work/side/neohorsejev-4b-q8_0.gguf \
 `certainty`，以及 isolated `score` 层级的 `legend`、`level_fit` 与 `fit_mass`；thisthat 与
 tev1 提供 `certainty`（`score` 额外提供 `legend`）；kev 提供其自身的 confidence；`jet` 与
 `jpt` 提供 `certainty`（`score` 额外提供 `legend`）；`neohorsejev` 提供其自身的语义 confidence
-（`score` 为 `level`，其余为线性 choice 置信）。
+（`score` 为 `level`，其余为线性 choice 置信）；`jad` 提供 `certainty`。
 
 可使用以下脚本从上游 checkpoint 重新构建：
 
@@ -304,6 +309,9 @@ scripts/build_jpt_gguf.sh <jpt-4b-dir> work/side/jpt-4b-q8_0.gguf
 scripts/build_neohorsejev_gguf.sh <NeoHorse-Jev-4B-dir> work/side
 python3 scripts/export_neohorsejev_head.py <NeoHorse-Jev-4B>/pointer_head.safetensors \
   work/side/neohorsejev-head.f32
+
+# jad：先将 LoRA 合并进 LLaDA-MoE-7B-A1B，再直接转换
+scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-Q8_0.gguf
 ```
 
 四者均量化为 Q8_0。`kev` 会在 fp32 下先合并 LoRA 再转换，并写出 `kev-head.f32`
@@ -331,6 +339,11 @@ side profile 复用同一后端，但拥有各自的读出方式：decider、thi
 thisthat 与 tev1 共用单 token 标签表与字母受限 softmax；thisthat 还会把同一请求的所有问题
 折叠进一个提示，每个问题各占一个答案槽，并在一趟前向中一并读出。
 
+`jad` 是唯一一个非因果（non-causal）的 profile。其 checkpoint 是 LLaDA-MoE——一个掩码
+扩散模型：它不用 next-token logits，而是在助手轮放入一个 mask token，对整段序列做一次非因果
+前向，从该槽位读出选项字母（与 ifreflex 对 LLaDA-MoE 的结构化读出一致）。它使用基座 LM head，
+因此无需打分头，8k 上下文由 `jad.json` 给出。
+
 归一化权重以 `weight + 1` 的形式存储，与 Dohnuts 的融合算子保持一致。
 
 ## 目录
@@ -345,7 +358,7 @@ include/dohnuts/http.hpp      HTTP 传输层
 src/engine.cpp                llama.cpp/mtmd 封装：加载、tokenize、批量打分
 src/protocol.cpp              Dohnuts 模板与答案
 src/side.cpp                  side profile 分发
-src/side/                     共享 runner 与四个 side profile
+src/side/                     共享 runner 与各 side profile
 src/http.cpp                  服务路由与 CORS
 src/main.cpp                  CLI 与 HTTP 服务
 scripts/                      环境安装、原生/Windows 构建、模型导出与 GGUF

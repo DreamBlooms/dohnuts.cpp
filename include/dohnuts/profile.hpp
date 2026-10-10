@@ -17,10 +17,11 @@ enum class model_profile {
     jet,       // LM head: option-letter logits after the chat decision prompt, per-type temperature
     jpt,       // LM head: option-letter logits after the chat decision prompt, single temperature
     neohorsejev,  // bilinear pointer head over the decide and option-end markers (kev readout), FIM prompt
+    jad,       // LLaDA-MoE: option-letter logits at a mask slot in the assistant turn (non-causal)
 };
 
-// Parses "dohnuts", "decider", "kev", "tev1", "thisthat", "jet", "jpt" or
-// "neohorsejev". Throws std::invalid_argument otherwise.
+// Parses "dohnuts", "decider", "kev", "tev1", "thisthat", "jet", "jpt",
+// "neohorsejev" or "jad". Throws std::invalid_argument otherwise.
 model_profile profile_from_string(const std::string & value);
 
 // The canonical name used in metadata and diagnostics.

@@ -79,5 +79,6 @@ std::unique_ptr<profile> make_neohorsejev_profile(runner & backend, const json &
                                                const std::filesystem::path & head_path);
 std::unique_ptr<profile> make_kev_profile(runner & backend, const json & config,
                                           const std::filesystem::path & head_path);
+std::unique_ptr<profile> make_jad_profile(runner & backend, const json & config);
 
 } // namespace dohnuts::side

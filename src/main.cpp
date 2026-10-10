@@ -66,9 +66,9 @@ void usage() {
                  "       dohnuts-cli --list-devices\n"
                  "\n"
                  "The metadata file names its profile: dohnuts (default), decider, "
-                 "thisthat, kev, tev1, jet, jpt or neohorsejev.\n"
+                 "thisthat, kev, tev1, jet, jpt, neohorsejev or jad.\n"
                  "dohnuts needs --head head.f32; kev and neohorsejev need --head kev-head.f32; "
-                 "decider, thisthat, tev1, jet and jpt need none.\n";
+                 "decider, thisthat, tev1, jet, jpt and jad need none.\n";
 }
 
 } // namespace

@@ -76,6 +76,7 @@ add_executable(dohnuts-cli
     src/side/jet.cpp
     src/side/jpt.cpp
     src/side/neohorsejev.cpp
+    src/side/jad.cpp
     src/http.cpp
 )
 target_include_directories(dohnuts-cli PRIVATE

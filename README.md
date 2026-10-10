@@ -238,9 +238,10 @@ length and reuse. The side models share the same cache.
 
 ## Other decision models
 
-The CLI also runs seven decision-model families, `decider`, `thisthat`, `kev`
-and `tev1`, which use a different prompt and readout from Dohnuts. They are
-profiles: the Dohnuts path is untouched, and none take images.
+The CLI also runs other decision-model families — `decider`, `thisthat`, `kev`,
+`tev1`, `jet`, `jpt`, `neohorsejev` and `jad` — which use a different prompt and
+readout from Dohnuts. They are profiles: the Dohnuts path is untouched, and none
+take images.
 
 | Profile | Models | Readout | Weights | GGUF |
 | --- | --- | --- | --- | --- |
@@ -251,13 +252,14 @@ profiles: the Dohnuts path is untouched, and none take images.
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | LM head restricted to the option labels after the chat decision prompt, one temperature per question type | full fine-tune | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
 | `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | LM head restricted to the option labels after the chat decision prompt | LoRA merged | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
 | `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | bilinear pointer head over the decide and option-end markers, one row per question over a shared state prefix | LoRA merged + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
+| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | LM head restricted to the option letters at a single mask slot in the assistant turn (LLaDA-MoE masked diffusion) | LoRA merged | early preview |
 
 Pass the matching model config as `--metadata`; the file names its own profile
 (`"profile": "decider"`, `"profile": "thisthat"`, `"profile": "kev"`,
-`"profile": "tev1"`, `"profile": "jet"`, `"profile": "jpt"` or
-`"profile": "neohorsejev"`), so no flag is needed. `--profile` overrides the
-file, and `dohnuts` is the default. `kev` and `neohorsejev` additionally need
-`--head`:
+`"profile": "tev1"`, `"profile": "jet"`, `"profile": "jpt"`,
+`"profile": "neohorsejev"` or `"profile": "jad"`), so no flag is needed.
+`--profile` overrides the file, and `dohnuts` is the default. `kev` and
+`neohorsejev` additionally need `--head`:
 
 ```sh
 # decider: no scorer head, one temperature from decider.json
@@ -287,6 +289,10 @@ build/dohnuts-cli --model work/side/jpt-4b-q8_0.gguf \
 # neohorsejev: bilinear head plus one temperature from neohorsejev.json
 build/dohnuts-cli --model work/side/neohorsejev-4b-q8_0.gguf \
   --head work/side/neohorsejev-head.f32 --metadata work/side/neohorsejev.json
+
+# jad: no scorer head; a LLaDA-MoE masked-diffusion read (8k context from jad.json)
+build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-Q8_0.gguf \
+  --metadata work/side/jad.json
 ```
 
 The same flags run the larger sizes; only the GGUF, head, and config paths change.
@@ -297,7 +303,8 @@ native statistics under `native`: `certainty`, and `legend` / `level_fit` /
 `fit_mass` for isolated `score` levels on decider; `certainty` (with `legend` for
 `score`) on thisthat and tev1; the model's own confidence for kev; `jet` and
 `jpt` add `certainty` (with `legend` for `score`); `neohorsejev` reports its own
-semantic confidence (`level` for `score`, the linear choice score otherwise).
+semantic confidence (`level` for `score`, the linear choice score otherwise);
+`jad` adds `certainty`.
 
 Rebuild them from the upstream checkpoints with:
 
@@ -324,6 +331,9 @@ scripts/build_jpt_gguf.sh <jpt-4b-dir> work/side/jpt-4b-q8_0.gguf
 scripts/build_neohorsejev_gguf.sh <NeoHorse-Jev-4B-dir> work/side
 python3 scripts/export_neohorsejev_head.py <NeoHorse-Jev-4B>/pointer_head.safetensors \
   work/side/neohorsejev-head.f32
+
+# jad: merge the LoRA into LLaDA-MoE-7B-A1B, then convert directly
+scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-Q8_0.gguf
 ```
 
 Every export is quantized to Q8_0. `kev` merges the LoRA in fp32 before
@@ -355,6 +365,13 @@ and tev1 share the single-token label table and the letter-restricted softmax;
 thisthat also folds a request's questions into one prompt, one answer slot each,
 and reads them in one pass.
 
+`jad` is the one non-causal profile. Its checkpoint is LLaDA-MoE, a masked
+diffusion model: instead of the next-token logits, it drops a single mask token
+into the assistant turn and reads the option letters off that slot in one
+non-causal forward (the same structured read ifreflex runs on LLaDA-MoE). It uses
+the base LM head, so no scorer head is needed, and takes its 8k context from
+`jad.json`.
+
 Norm weights are stored as `weight + 1`, matching the Dohnuts fused kernels.
 
 ## Layout
@@ -364,12 +381,12 @@ include/dohnuts/engine.hpp    engine interface
 include/dohnuts/protocol.hpp  prompt rendering, calibration, predictor
 include/dohnuts/profile.hpp   side model profile switch
 include/dohnuts/side.hpp      side engine facade
-include/dohnuts/side/         runner, decider, thisthat, kev and tev1 profiles
+include/dohnuts/side/         shared runner and the side decision-model profiles
 include/dohnuts/http.hpp      HTTP transport
 src/engine.cpp                llama.cpp/mtmd wrapper: load, tokenize, batched scoring
 src/protocol.cpp              Dohnuts templates and answers
 src/side.cpp                  side profile dispatch
-src/side/                     shared runner and the four side profiles
+src/side/                     shared runner and the side decision-model profiles
 src/http.cpp                  server routes and CORS
 src/main.cpp                  CLI and HTTP server
 scripts/                      setup, native/Windows builds, model export, GGUF

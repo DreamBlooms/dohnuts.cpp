@@ -21,6 +21,7 @@ struct runner_options {
     int gpu_layers = 0;
     int max_length = 4096;
     bool embeddings = false;   // kev needs hidden states; decider does not
+    bool diffusion = false;    // LLaDA-MoE: non-causal, mask-seeded readout
     flash_attn_mode flash_attn = flash_attn_mode::automatic;
 };
 
@@ -52,6 +53,13 @@ public:
     // Valid until the next decode. Indexed by batch token position.
     const float * logits_at(int index) const;
     const float * embeddings_at(int index) const;
+
+    // The model's mask token id (LLaDA-MoE), or -1 when the model has none.
+    int mask_id() const;
+
+    // Decodes ids as one non-causal sequence and emits logits at `read_index`
+    // only (the mask slot). For diffusion profiles; ignores the prefix cache.
+    void decode_canvas(const std::vector<int32_t> & ids, int read_index);
 
 private:
     struct impl;
