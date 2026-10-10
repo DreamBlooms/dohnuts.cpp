@@ -226,14 +226,14 @@ CLI 还可运行 `decider`、`thisthat`、`kev`、`tev1`、`jet`、`jpt`、`neoh
 
 | Profile | 模型 | 读出方式 | 权重 | GGUF |
 | --- | --- | --- | --- | --- |
+| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | 在助手轮的单个 mask 槽位把 LM head 限制到选项字母（LLaDA-MoE 掩码扩散） | LoRA 合并 | [7b-A1b(EarlyPreview)](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
 | `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b)、[decider-2b](https://huggingface.co/Mapika/decider-2b) | 在 `Answer: (` 槽位将 LM head 限制到选项字母 | 全量微调 | [0.8b](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF)、[2b](https://huggingface.co/DreamBlooms/decider-2b-GGUF) |
-| `thisthat` | [this-that-model-1.2](https://huggingface.co/flock-io/this-that-model-1.2) | 在每个问题的 `Answer: (` 槽位将 LM head 限制到选项标签，所有问题共用一趟前向 | 全量微调 | [2b(1.2)](https://huggingface.co/DreamBlooms/this-that-model-1.2-GGUF) |
 | `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b)、[kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF)、[4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
 | `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | 在 chat 决策提示后把 LM head 限制到选项字母 | 全量微调 | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | 在 chat 决策提示后把 LM head 限制到选项标签，按题型各用一个温度 | 全量微调 | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
 | `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | 在 chat 决策提示后把 LM head 限制到选项标签 | LoRA 合并 | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
 | `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | 对 decide 与选项结束标记做双线性 pointer head，每题一行、共享 state 前缀 | LoRA 合并 + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
-| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | 在助手轮的单个 mask 槽位把 LM head 限制到选项字母（LLaDA-MoE 掩码扩散） | LoRA 合并 | [7b-A1b(EarlyPreview)](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
+| `thisthat` | [this-that-model-1.2](https://huggingface.co/flock-io/this-that-model-1.2) | 在每个问题的 `Answer: (` 槽位将 LM head 限制到选项标签，所有问题共用一趟前向 | 全量微调 | [2b(1.2)](https://huggingface.co/DreamBlooms/this-that-model-1.2-GGUF) |
 
 传入对应模型的配置文件作为 `--metadata` 即可；配置文件自身声明了 profile
 （`"profile": "decider"`、`"profile": "thisthat"`、`"profile": "kev"`、
