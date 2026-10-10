@@ -19,7 +19,6 @@
 namespace dohnuts {
 namespace {
 
-constexpr int MAX_LENGTH = 4096;   // Per-sequence token budget (dohnuts adapter limit).
 constexpr int MAX_SEQS = 8;        // Sequences decoded in one batch.
 constexpr const char * MARKER = "<|fim_suffix|>";
 // Dohnuts preprocesses images to 512x512 (recipe.IMAGE_PIXELS), which the
@@ -81,6 +80,7 @@ struct engine::impl {
     int hidden = 0;
     int gpu_layers = 0;
     int n_batch = 2048;
+    int max_length = 4096;
     std::string image_prefix;
     std::vector<ggml_backend_dev_t> devices; // must outlive the model
     std::vector<float> head;
@@ -151,6 +151,7 @@ struct engine::impl {
             mparams.devices = devices.data();
         }
         gpu_layers = options.gpu_layers;
+        max_length = options.max_length;
         model = llama_model_load_from_file(to_utf8(options.model).c_str(), mparams);
         if (!model) throw std::runtime_error("Cannot load model: " + options.model.string());
 
@@ -161,8 +162,8 @@ struct engine::impl {
         auto cparams = llama_context_default_params();
         // n_ctx is the total cache; n_ctx_seq = n_ctx / n_seq_max. Reserve a full
         // token budget per sequence.
-        cparams.n_ctx = MAX_LENGTH * MAX_SEQS;
-        cparams.n_batch = std::max(options.n_batch, MAX_LENGTH);
+        cparams.n_ctx = max_length * MAX_SEQS;
+        cparams.n_batch = std::max(options.n_batch, max_length);
         cparams.n_ubatch = std::max(options.n_batch, 512);
         cparams.n_seq_max = MAX_SEQS;
         // A unified cache keeps every sequence in one stream so partial-range
@@ -217,7 +218,7 @@ engine::engine(const engine_options & options) : p(std::make_unique<impl>()) {
 engine::~engine() = default;
 
 int engine::marker_id() const { return p->marker; }
-int engine::max_length() const { return MAX_LENGTH; }
+int engine::max_length() const { return p->max_length; }
 
 std::string engine::backend_name() const {
     char buf[256] = {};
@@ -301,7 +302,7 @@ void engine::score_text_rows(const std::vector<std::string> & prompts,
     for (size_t r = 0; r < count; ++r) {
         token_rows[r] = p->tokenize(prompts[start + r]);
         if (token_rows[r].empty()) throw std::invalid_argument("Empty prompt");
-        if (token_rows[r].size() > (size_t) MAX_LENGTH)
+        if (token_rows[r].size() > (size_t) p->max_length)
             throw std::length_error("Input exceeds the token budget");
         for (size_t i = 0; i < token_rows[r].size(); ++i)
             if (token_rows[r][i] == p->marker) marker_pos[r].push_back((int) i);
@@ -383,7 +384,7 @@ void engine::score_image_group(const std::vector<std::string> & prompts,
             if (n_image_chunks != 1)
                 throw std::invalid_argument("Exactly one image is supported per request");
             if (image_chunk == n_chunks) throw std::runtime_error("Prompt has no image chunk");
-            if (total_tokens[r] > (size_t) MAX_LENGTH)
+            if (total_tokens[r] > (size_t) p->max_length)
                 throw std::length_error("Input exceeds the token budget");
             image_index[r] = image_chunk;
 

@@ -32,6 +32,8 @@ struct options {
     std::string cors_origin = "*";
     std::string device;
     int threads = 0;
+    int n_batch = 0;       // 0 keeps the per-profile default.
+    int ctx = 0;           // per-sequence token budget; 0 keeps the default.
     int gpu_layers = 0;
     size_t max_questions = 8;
     bool batching = true;
@@ -57,6 +59,7 @@ void usage() {
     std::cerr << "usage: dohnuts-cli --model M.gguf --metadata M.json [--head H.f32] "
                  "[--mmproj MMPROJ.gguf] [--profile NAME] "
                  "[--gpu-layers N] [--device NAME[,NAME]] [--threads N] "
+                 "[--n-batch N] [--ctx N] "
                  "[--flash-attn[=true|false|auto]] "
                  "[--server --host H --port P --api-key K --cors-origin ORIGIN "
                  "--max-questions N --no-batching | --input requests.jsonl [--raw]]\n"
@@ -91,6 +94,8 @@ int main(int argc, char ** argv) {
             else if (arg == "--api-key") opts.api_key = next();
             else if (arg == "--cors-origin") opts.cors_origin = next();
             else if (arg == "--threads") opts.threads = std::stoi(next());
+            else if (arg == "--n-batch") opts.n_batch = std::stoi(next());
+            else if (arg == "--ctx") opts.ctx = std::stoi(next());
             else if (arg == "--gpu-layers") opts.gpu_layers = std::stoi(next());
             else if (arg == "--device") opts.device = next();
             else if (arg == "--max-questions") opts.max_questions = std::stoul(next());
@@ -149,6 +154,8 @@ int main(int argc, char ** argv) {
             side_opts.head = opts.head;
             side_opts.config = opts.metadata;
             side_opts.threads = opts.threads;
+            if (opts.n_batch > 0) side_opts.n_batch = opts.n_batch;
+            if (opts.ctx > 0) side_opts.max_length = opts.ctx;
             side_opts.gpu_layers = opts.gpu_layers;
             side_opts.device = opts.device;
             side_opts.flash_attn = opts.flash_attn;
@@ -187,6 +194,8 @@ int main(int argc, char ** argv) {
         engine_opts.head = opts.head;
         engine_opts.mmproj = opts.mmproj;
         engine_opts.threads = opts.threads;
+        if (opts.n_batch > 0) engine_opts.n_batch = opts.n_batch;
+        if (opts.ctx > 0) engine_opts.max_length = opts.ctx;
         engine_opts.gpu_layers = opts.gpu_layers;
         engine_opts.device = opts.device;
         engine_opts.flash_attn = opts.flash_attn;

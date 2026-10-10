@@ -20,6 +20,7 @@ struct engine_options {
     std::filesystem::path mmproj;   // Vision encoder; empty disables image input.
     int threads = 0;        // 0 uses the llama.cpp default.
     int n_batch = 2048;     // Max tokens decoded in one pass.
+    int max_length = 4096;  // Per-sequence token budget (the context each sequence needs).
     int gpu_layers = 0;     // Layers kept in VRAM; 0 is CPU only, negative is all.
     std::string device;     // Comma-separated ggml device names; empty uses the default.
     flash_attn_mode flash_attn = flash_attn_mode::automatic;
