@@ -77,10 +77,10 @@ void usage() {
                  "metadata from an official llama.cpp decision GGUF; --metadata is optional there.\n"
                  "Note: the kev profile is deprecated - official llama.cpp ships KEV now, "
                  "prefer --profile official with an official kev GGUF.\n"
-                 "--shared-prefix (side profiles, off by default) batches a request's rows "
-                 "into one multi-sequence decode; faster on long shared states, but on hybrid "
-                 "backbones the probabilities are not bit-identical (options are unchanged). "
-                 "The core dohnuts profile already batches this way.\n";
+                 "--shared-prefix, aka --batch-branches (side profiles, off by default) batches "
+                 "a request's rows into one multi-sequence decode; faster on long shared states, "
+                 "but on hybrid backbones the probabilities are not bit-identical (options are "
+                 "unchanged). The core dohnuts profile already batches this way.\n";
 }
 
 } // namespace
@@ -112,7 +112,7 @@ int main(int argc, char ** argv) {
             else if (arg == "--device") opts.device = next();
             else if (arg == "--max-questions") opts.max_questions = std::stoul(next());
             else if (arg == "--no-batching") opts.batching = false;
-            else if (arg == "--shared-prefix") opts.shared_prefix = true;
+            else if (arg == "--shared-prefix" || arg == "--batch-branches") opts.shared_prefix = true;
             else if (arg == "--flash-attn") opts.flash_attn = dohnuts::flash_attn_mode::enabled;
             else if (arg.rfind("--flash-attn=", 0) == 0) {
                 const std::string value = arg.substr(std::strlen("--flash-attn="));
