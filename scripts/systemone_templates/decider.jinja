@@ -1,0 +1,7 @@
+Context:
+{{ state }}
+
+Question: {{ instructions }}
+Options:
+{% for o in options %}({{ "ABCDEFGHIJ"[loop.index0] }}) {{ o.key }}{% if o.description is not none %}: {{ o.description }}{% endif %}
+{% endfor %}Answer: (

@@ -18,4 +18,13 @@ echo "==> converting to Q8_0 GGUF"
 "$PYTHON" "$LLAMA/convert_hf_to_gguf.py" "$MODEL" \
     --outfile "$OUT" --outtype q8_0 --no-mtp
 
+# Opt-in (DECISION=1): also write the official decision metadata + systemone
+# template, so the same GGUF is servable by upstream llama-server and by
+# dohnuts --profile official.
+if [ "${DECISION:-0}" = "1" ]; then
+    echo "==> annotating with official decision metadata"
+    "$PYTHON" "$ROOT/scripts/annotate_decision.py" "$OUT" "$OUT" --profile decider \
+        --temperature choice=1.0 --temperature score=1.0 --temperature noul=1.0
+fi
+
 echo "==> done: $OUT"
