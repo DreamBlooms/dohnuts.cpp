@@ -18,13 +18,19 @@ enum class model_profile {
     jpt,       // LM head: option-letter logits after the chat decision prompt, single temperature
     neohorsejev,  // bilinear pointer head over the decide and option-end markers (kev readout), FIM prompt
     jad,       // LLaDA-MoE: option-letter logits at a mask slot in the assistant turn (non-causal)
+    official,  // Official SystemOne Support: official llama.cpp decision GGUF ("systemone" template + <arch>.decision.*)
 };
 
 // Parses "dohnuts", "decider", "kev", "tev1", "thisthat", "jet", "jpt",
-// "neohorsejev" or "jad". Throws std::invalid_argument otherwise.
+// "neohorsejev", "jad" or "official". Throws std::invalid_argument otherwise.
 model_profile profile_from_string(const std::string & value);
 
 // The canonical name used in metadata and diagnostics.
 const char * profile_name(model_profile profile);
+
+// A note when official llama.cpp now covers this profile (same model or an
+// equivalent readout), so callers can steer users to --profile official.
+// Empty when the profile is not deprecated.
+std::string profile_deprecation(model_profile profile);
 
 } // namespace dohnuts

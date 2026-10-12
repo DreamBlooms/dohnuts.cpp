@@ -77,7 +77,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON
 cmake --build build -j --target dohnuts-cli
 ```
 
-llama.cpp is pinned to release `v0.4.1` as a submodule; `-DLLAMA_DIR=...` points
+llama.cpp is pinned to release `v0.6.0` as a submodule; `-DLLAMA_DIR=...` points
 the build at another checkout.
 
 ### Windows (cross-compile)
@@ -243,23 +243,33 @@ The CLI also runs other decision-model families — `decider`, `thisthat`, `kev`
 readout from Dohnuts. They are profiles: the Dohnuts path is untouched, and none
 take images.
 
+The `official` profile (Official SystemOne Support) runs the decision models
+that upstream llama.cpp ships. It reads the prompt template and the decision
+metadata straight from the GGUF and reuses llama.cpp's own implementation, so a
+new decision type arrives with a submodule bump. Where a built-in profile
+overlaps with upstream, it is deprecated in favor of `official` (the CLI warns
+when it is used).
+
 | Profile | Models | Readout | Weights | GGUF |
 | --- | --- | --- | --- | --- |
+| `official` | official llama.cpp decision GGUFs (`lev`, `kev`, `nimble`, ...) | prompt from the GGUF `systemone` template, readout by `<arch>.decision.type` | official llama.cpp | official GGUFs |
 | `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b), [decider-2b](https://huggingface.co/Mapika/decider-2b) | LM head restricted to the option letters at an `Answer: (` slot | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF), [2b](https://huggingface.co/DreamBlooms/decider-2b-GGUF) |
 | `thisthat` | [this-that-model-1.2](https://huggingface.co/flock-io/this-that-model-1.2) | LM head restricted to the option labels at each question's `Answer: (` slot, all questions in one pass | full fine-tune | [1.2](https://huggingface.co/DreamBlooms/this-that-model-1.2-GGUF) |
-| `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b), [kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF), [4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
 | `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | LM head restricted to the option letters after the chat decision prompt | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | LM head restricted to the option labels after the chat decision prompt, one temperature per question type | full fine-tune | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
 | `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | LM head restricted to the option labels after the chat decision prompt | LoRA merged | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
 | `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | bilinear pointer head over the decide and option-end markers, one row per question over a shared state prefix | LoRA merged + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
 | `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | LM head restricted to the option letters at a single mask slot in the assistant turn (LLaDA-MoE masked diffusion) | LoRA merged | [Q8_0](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
+| `kev` (deprecated) | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b), [kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | bilinear pointer head over the decide and option-end markers | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF), [4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
 
 Pass the matching model config as `--metadata`; the file names its own profile
 (`"profile": "decider"`, `"profile": "thisthat"`, `"profile": "kev"`,
 `"profile": "tev1"`, `"profile": "jet"`, `"profile": "jpt"`,
 `"profile": "neohorsejev"` or `"profile": "jad"`), so no flag is needed.
 `--profile` overrides the file, and `dohnuts` is the default. `kev` and
-`neohorsejev` additionally need `--head`:
+`neohorsejev` additionally need `--head`. The `official` profile needs no
+config file: a GGUF that carries the decision metadata is detected and run
+automatically (use `--profile official` to force it).
 
 ```sh
 # decider: no scorer head, one temperature from decider.json

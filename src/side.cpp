@@ -7,6 +7,9 @@
 #include "dohnuts/side/common.hpp"
 #include "dohnuts/side/profile.hpp"
 #include "dohnuts/side/runner.hpp"
+#ifdef DOHNUTS_DECISION_INTEROP
+#include "dohnuts/side/official.hpp"
+#endif
 
 namespace dohnuts {
 namespace {
@@ -52,6 +55,9 @@ struct side_engine::impl {
     int gpu_layers = 0;
     std::unique_ptr<side::runner> backend;
     std::unique_ptr<side::profile> handler;
+#ifdef DOHNUTS_DECISION_INTEROP
+    std::unique_ptr<side::official_engine> official;
+#endif
 };
 
 side_engine::side_engine(const side_options & options) : p(std::make_unique<impl>()) {
@@ -67,10 +73,34 @@ side_engine::side_engine(const side_options & options) : p(std::make_unique<impl
     ropts.gpu_layers = options.gpu_layers;
     ropts.max_length = options.max_length > 0 ? options.max_length
                                               : config.value("max_length", 4096);
-    ropts.embeddings = p->kind == model_profile::kev || p->kind == model_profile::neohorsejev;
+    // The official readout needs hidden states only for the pointer/marker
+    // types; the label types read logits at one token.
+    std::string decision_type;
+#ifdef DOHNUTS_DECISION_INTEROP
+    if (p->kind == model_profile::official) {
+        decision_type = config.contains("decision") && config.at("decision").contains("type")
+            ? config.at("decision").at("type").get<std::string>()
+            : side::gguf_decision_type(side::to_utf8(options.model));
+    }
+#endif
+    ropts.embeddings = p->kind == model_profile::kev || p->kind == model_profile::neohorsejev
+        || (p->kind == model_profile::official
+            && (decision_type == "kev" || decision_type == "laya"));
     ropts.diffusion = p->kind == model_profile::jad;
     ropts.flash_attn = options.flash_attn;
     p->backend = std::make_unique<side::runner>(ropts);
+
+#ifdef DOHNUTS_DECISION_INTEROP
+    if (p->kind == model_profile::official) {
+        p->official = std::make_unique<side::official_engine>(*p->backend, config);
+        return;
+    }
+#else
+    if (p->kind == model_profile::official) {
+        throw std::runtime_error(
+            "Official SystemOne Support is not built; configure with -DDOHNUTS_DECISION_INTEROP=ON");
+    }
+#endif
 
     if (p->kind == model_profile::jad) {
         p->handler = side::make_jad_profile(*p->backend, config);
@@ -112,6 +142,10 @@ json side_engine::predict(const json & requests, bool raw) const {
     if (!requests.is_array() || requests.empty())
         throw std::invalid_argument("requests must be a nonempty array");
 
+#ifdef DOHNUTS_DECISION_INTEROP
+    if (p->official) return p->official->predict(requests);
+#endif
+
     json output = json::array();
     for (const auto & request : requests) {
         if (!request.is_object()) throw std::invalid_argument("Request must be an object");
@@ -143,12 +177,14 @@ json side_engine::predict(const json & requests, bool raw) const {
                 const double mass = std::max(1e-9, std::accumulate(fit.begin(), fit.end(), 0.0));
                 std::vector<double> dist = fit;
                 for (double & value : dist) value /= mass;
-                answer = common_answer(q, dist);
+                answer = p->handler->answer(q, dist);
+                if (answer.is_null()) answer = common_answer(q, dist);
                 json extra = p->handler->native(q, dist, fit, mass);
                 if (!extra.empty()) answer["native"] = extra;
             } else {
                 const std::vector<double> & probs = row_probs[q.first_row];
-                answer = common_answer(q, probs);
+                answer = p->handler->answer(q, probs);
+                if (answer.is_null()) answer = common_answer(q, probs);
                 json extra = p->handler->native(q, probs, {}, 0.0);
                 if (!extra.empty()) answer["native"] = extra;
             }

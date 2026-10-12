@@ -3,6 +3,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 
 #include "dohnuts/prefix_cache.hpp"
 #include "dohnuts/sys.hpp"
@@ -197,6 +198,39 @@ std::string runner::backend_name() const {
     char buf[256] = {};
     llama_model_desc(p->model, buf, sizeof(buf));
     return buf;
+}
+
+llama_model * runner::model_handle() const { return p->model; }
+
+int runner::n_embd_out() const { return llama_model_n_embd_out(p->model); }
+
+std::string runner::architecture() const {
+    return meta("general.architecture");
+}
+
+std::string runner::meta(const std::string & key) const {
+    char buf[512];
+    const int32_t n = llama_model_meta_val_str(p->model, key.c_str(), buf, sizeof(buf));
+    return n < 0 ? std::string() : std::string(buf);
+}
+
+std::string runner::chat_template(const std::string & name) const {
+    const char * tmpl = llama_model_chat_template(p->model, name.c_str());
+    return tmpl ? std::string(tmpl) : std::string();
+}
+
+std::vector<std::pair<std::string, std::string>> runner::meta_prefix(const std::string & prefix) const {
+    std::vector<std::pair<std::string, std::string>> out;
+    const int32_t count = llama_model_meta_count(p->model);
+    for (int32_t i = 0; i < count; ++i) {
+        char key[512];
+        if (llama_model_meta_key_by_index(p->model, i, key, sizeof(key)) < 0) continue;
+        if (std::string(key).rfind(prefix, 0) != 0) continue;
+        char val[512];
+        if (llama_model_meta_val_str_by_index(p->model, i, val, sizeof(val)) < 0) continue;
+        out.emplace_back(key, val);
+    }
+    return out;
 }
 
 } // namespace dohnuts::side

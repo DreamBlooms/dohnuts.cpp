@@ -73,7 +73,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON
 cmake --build build -j --target dohnuts-cli
 ```
 
-llama.cpp 以子模块形式固定在 `v0.4.1` 发行版；`-DLLAMA_DIR=...` 可指定其他 checkout。
+llama.cpp 以子模块形式固定在 `v0.6.0` 发行版；`-DLLAMA_DIR=...` 可指定其他 checkout。
 
 ### Windows（交叉编译）
 
@@ -224,22 +224,29 @@ CLI 还可运行 `decider`、`thisthat`、`kev`、`tev1`、`jet`、`jpt`、`neoh
 `jad` 等决策模型系列，它们使用与 Dohnuts 不同的提示模板与读出方式。它们均以 profile 形式
 集成：Dohnuts 路径保持不变，且都不支持图像输入。
 
+`official` profile（Official SystemOne Support）直接运行上游 llama.cpp 内置的决策模型：
+它从 GGUF 中读取提示模板与决策元数据，并复用 llama.cpp 自身的实现，因此上游新增决策类型时
+只需提升子模块版本即可支持。凡是我们与上游重合的内置 profile 均标记为过时并推荐改用
+`official`（使用时 CLI 会给出警告）。
+
 | Profile | 模型 | 读出方式 | 权重 | GGUF |
 | --- | --- | --- | --- | --- |
+| `official` | 官方 llama.cpp 决策 GGUF（`lev`、`kev`、`nimble` 等） | 提示来自 GGUF 的 `systemone` 模板，读出由 `<arch>.decision.type` 决定 | 官方 llama.cpp | 官方 GGUF |
 | `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b)、[decider-2b](https://huggingface.co/Mapika/decider-2b) | 在 `Answer: (` 槽位将 LM head 限制到选项字母 | 全量微调 | [0.8b](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF)、[2b](https://huggingface.co/DreamBlooms/decider-2b-GGUF) |
 | `thisthat` | [this-that-model-1.2](https://huggingface.co/flock-io/this-that-model-1.2) | 在每个问题的 `Answer: (` 槽位将 LM head 限制到选项标签，所有问题共用一趟前向 | 全量微调 | [1.2](https://huggingface.co/DreamBlooms/this-that-model-1.2-GGUF) |
-| `kev` | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b)、[kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF)、[4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
 | `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | 在 chat 决策提示后把 LM head 限制到选项字母 | 全量微调 | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | 在 chat 决策提示后把 LM head 限制到选项标签，按题型各用一个温度 | 全量微调 | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
 | `jpt` | [jpt-4b](https://huggingface.co/kirp/jpt-4b) | 在 chat 决策提示后把 LM head 限制到选项标签 | LoRA 合并 | [4b](https://huggingface.co/DreamBlooms/jpt-4b-GGUF) |
 | `neohorsejev` | [NeoHorse-Jev-4B](https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B) | 对 decide 与选项结束标记做双线性 pointer head，每题一行、共享 state 前缀 | LoRA 合并 + pointer head | [4b](https://huggingface.co/DreamBlooms/NeoHorse-Jev-4B-GGUF) |
 | `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | 在助手轮的单个 mask 槽位把 LM head 限制到选项字母（LLaDA-MoE 掩码扩散） | LoRA 合并 | [Q8_0](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
+| `kev`（已过时） | [kev-0.8b](https://huggingface.co/jaredpalmer/kev-0.8b)、[kev-4b](https://huggingface.co/jaredpalmer/kev-4b) | 对 decide 与选项结束标记做双线性 pointer head | LoRA + pointer head | [0.8b](https://huggingface.co/DreamBlooms/kev-0.8b-GGUF)、[4b](https://huggingface.co/DreamBlooms/kev-4b-GGUF) |
 
 传入对应模型的配置文件作为 `--metadata` 即可；配置文件自身声明了 profile
 （`"profile": "decider"`、`"profile": "thisthat"`、`"profile": "kev"`、
 `"profile": "tev1"`、`"profile": "jet"`、`"profile": "jpt"`、
 `"profile": "neohorsejev"` 或 `"profile": "jad"`），无需额外开关。`--profile` 可覆盖文件中的声明，默认值为
-`dohnuts`。`kev` 与 `neohorsejev` 还需额外传入 `--head`：
+`dohnuts`。`kev` 与 `neohorsejev` 还需额外传入 `--head`。`official` 无需配置文件：
+带有决策元数据的 GGUF 会被自动识别并运行（可用 `--profile official` 强制指定）。
 
 ```sh
 # decider：无需打分头，温度来自 decider.json

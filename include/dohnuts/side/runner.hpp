@@ -11,6 +11,8 @@
 
 #include "dohnuts/flash_attn.hpp"
 
+struct llama_model;
+
 namespace dohnuts::side {
 
 struct runner_options {
@@ -36,6 +38,18 @@ public:
     int hidden() const;
     int max_length() const;
     std::string backend_name() const;
+
+    // Raw handles for the official decision interop.
+    llama_model * model_handle() const;
+    int n_embd_out() const;   // width of the embeddings output (2*pointer_dim for kev)
+
+    // GGUF metadata accessors (official decision-model interop). Empty when the
+    // key or template is missing.
+    std::string architecture() const;
+    std::string meta(const std::string & key) const;
+    std::string chat_template(const std::string & name) const;
+    // Every "key=value" whose key starts with `prefix`, in file order.
+    std::vector<std::pair<std::string, std::string>> meta_prefix(const std::string & prefix) const;
 
     std::vector<int32_t> tokenize(const std::string & text, bool parse_special = true) const;
     int single_token(const std::string & text) const;

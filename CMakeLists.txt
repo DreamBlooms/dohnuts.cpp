@@ -19,6 +19,9 @@ set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+# dohnuts never spawns subprocesses; dropping this trims the common library and
+# the Windows cross build surface.
+set(LLAMA_SUBPROCESS OFF CACHE BOOL "" FORCE)
 # mtmd provides the vision encoder used by --mmproj; builds standalone when
 # LLAMA_BUILD_TOOLS is off.
 set(LLAMA_BUILD_MTMD ON CACHE BOOL "" FORCE)
@@ -51,12 +54,18 @@ if(DOHNUTS_METAL)
     set(GGML_METAL ON CACHE BOOL "" FORCE)
 endif()
 
+# Official SystemOne Support: an "official" profile that reads the prompt
+# template and decision metadata out of an official llama.cpp decision GGUF.
+# Turning it off leaves the existing profiles untouched.
+option(DOHNUTS_DECISION_INTEROP "Official SystemOne Support (official profile)" ON)
+
 add_subdirectory("${LLAMA_DIR}" "${CMAKE_BINARY_DIR}/llama.cpp")
 
-# nlohmann/json is header-only and vendored under third_party/nlohmann so the
-# build stays self-contained and cross-compilable (no host /usr/include leaks).
-# Everything is compiled straight into one executable: the CLI is the only
-# artifact, so no intermediate libraries are produced.
+# JSON, the HTTP transport and the Jinja engine come from the pinned llama.cpp
+# submodule (llama-common) instead of a vendored copy, so there is a single
+# nlohmann/cpp-httplib throughout the build. Everything is compiled straight
+# into one executable: the CLI is the only artifact, so no intermediate
+# libraries are produced.
 
 # The HTTP transport is adapted from lkarlslund/laya.cpp (MIT).
 find_package(Threads REQUIRED)
@@ -79,11 +88,25 @@ add_executable(dohnuts-cli
     src/side/jad.cpp
     src/http.cpp
 )
+if(DOHNUTS_DECISION_INTEROP)
+    # Official SystemOne Support compiles llama.cpp's own decision
+    # implementation in place, so new decision types arrive with a submodule bump.
+    target_sources(dohnuts-cli PRIVATE
+        src/side/official.cpp
+        "${LLAMA_DIR}/tools/server/server-decision.cpp"
+        "${LLAMA_DIR}/tools/server/server-common.cpp"
+    )
+    target_compile_definitions(dohnuts-cli PRIVATE DOHNUTS_DECISION_INTEROP=1)
+    target_include_directories(dohnuts-cli PRIVATE
+        "${LLAMA_DIR}/tools/server"
+        "${LLAMA_DIR}/src"
+    )
+endif()
 target_include_directories(dohnuts-cli PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
 )
-target_link_libraries(dohnuts-cli PRIVATE llama mtmd Threads::Threads)
+target_link_libraries(dohnuts-cli PRIVATE llama mtmd llama-common cpp-httplib vendor::nlohmann Threads::Threads)
 if(WIN32)
     target_link_libraries(dohnuts-cli PRIVATE ws2_32)  # Winsock for cpp-httplib
 endif()

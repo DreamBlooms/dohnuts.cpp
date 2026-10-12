@@ -60,6 +60,15 @@ public:
     // Scores one row: a probability distribution over its options.
     virtual std::vector<double> score(const planned_row & row) const = 0;
 
+    // When non-null, replaces the shared Dohnuts answer shape for this question.
+    // Lets a profile emit an exact foreign shape (the official llama.cpp
+    // /v1/systemone answer). The default returns null and uses the common shape.
+    virtual json answer(const planned_question & question,
+                        const std::vector<double> & p) const {
+        (void) question; (void) p;
+        return json();
+    }
+
     // Profile-native fields, added to the common answer under "native".
     virtual json native(const planned_question & question,
                         const std::vector<double> & p,

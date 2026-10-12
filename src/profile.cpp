@@ -14,6 +14,7 @@ model_profile profile_from_string(const std::string & value) {
     if (value == "jpt") return model_profile::jpt;
     if (value == "neohorsejev") return model_profile::neohorsejev;
     if (value == "jad") return model_profile::jad;
+    if (value == "official") return model_profile::official;
     throw std::invalid_argument("Unknown profile: " + value);
 }
 
@@ -27,7 +28,19 @@ const char * profile_name(model_profile profile) {
         case model_profile::jpt: return "jpt";
         case model_profile::neohorsejev: return "neohorsejev";
         case model_profile::jad: return "jad";
+        case model_profile::official: return "official";
         default: return "dohnuts";
+    }
+}
+
+std::string profile_deprecation(model_profile profile) {
+    switch (profile) {
+        case model_profile::kev:
+            // Same models (jaredpalmer/kev) now ship KEV in official llama.cpp.
+            return "the \"kev\" profile is deprecated: official llama.cpp now supports "
+                   "KEV, prefer --profile official with an official kev GGUF";
+        default:
+            return "";
     }
 }
 

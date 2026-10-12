@@ -13,6 +13,9 @@
 #include "dohnuts/profile.hpp"
 #include "dohnuts/protocol.hpp"
 #include "dohnuts/side.hpp"
+#ifdef DOHNUTS_DECISION_INTEROP
+#include "dohnuts/side/official.hpp"
+#endif
 
 namespace {
 
@@ -66,9 +69,13 @@ void usage() {
                  "       dohnuts-cli --list-devices\n"
                  "\n"
                  "The metadata file names its profile: dohnuts (default), decider, "
-                 "thisthat, kev, tev1, jet, jpt, neohorsejev or jad.\n"
+                 "thisthat, kev, tev1, jet, jpt, neohorsejev, jad or official.\n"
                  "dohnuts needs --head head.f32; kev and neohorsejev need --head kev-head.f32; "
-                 "decider, thisthat, tev1, jet, jpt and jad need none.\n";
+                 "decider, thisthat, tev1, jet, jpt and jad need none.\n"
+                 "official (Official SystemOne Support) reads the prompt template and decision "
+                 "metadata from an official llama.cpp decision GGUF; --metadata is optional there.\n"
+                 "Note: the kev profile is deprecated - official llama.cpp ships KEV now, "
+                 "prefer --profile official with an official kev GGUF.\n";
 }
 
 } // namespace
@@ -120,15 +127,28 @@ int main(int argc, char ** argv) {
             for (const auto & name : dohnuts::available_devices()) std::cout << name << '\n';
             return 0;
         }
-        if (opts.model.empty() || opts.metadata.empty()) { usage(); return 2; }
+        if (opts.model.empty()) { usage(); return 2; }
 
-        // The metadata file names its profile ("dohnuts", "decider", "thisthat",
-        // "kev" or "tev1"); --profile overrides it. Unknown or missing defaults
-        // to dohnuts.
-        const json metadata = load_json(opts.metadata);
+        // The metadata file names its profile ("dohnuts", "decider", ...);
+        // --profile overrides it. A GGUF with official decision metadata and no
+        // explicit profile selects "official". Unknown or missing defaults to
+        // dohnuts (which still needs --metadata for its temperatures).
+        json metadata = json::object();
+        if (!opts.metadata.empty()) metadata = load_json(opts.metadata);
         std::string profile_name = opts.profile;
-        if (profile_name.empty()) profile_name = metadata.value("profile", "dohnuts");
+        if (profile_name.empty()) profile_name = metadata.value("profile", "");
+#ifdef DOHNUTS_DECISION_INTEROP
+        if (profile_name.empty() && !dohnuts::side::gguf_decision_type(opts.model).empty()) {
+            profile_name = "official";
+        }
+#endif
+        if (profile_name.empty()) profile_name = "dohnuts";
         const dohnuts::model_profile profile = dohnuts::profile_from_string(profile_name);
+        if (profile == dohnuts::model_profile::dohnuts && opts.metadata.empty()) { usage(); return 2; }
+
+        // Warn (to the runtime output) when official llama.cpp now covers this profile.
+        const std::string deprecation = dohnuts::profile_deprecation(profile);
+        if (!deprecation.empty()) std::cerr << "warning: " << deprecation << '\n';
 
         // The predictor callback is the same shape for every profile; only the
         // backend differs. Side profiles have no vision; only kev needs a head.
