@@ -77,9 +77,10 @@ void usage() {
                  "metadata from an official llama.cpp decision GGUF; --metadata is optional there.\n"
                  "Note: the kev profile is deprecated - official llama.cpp ships KEV now, "
                  "prefer --profile official with an official kev GGUF.\n"
-                 "--shared-prefix (official only, off by default) batches a request's questions "
-                 "into one decode; faster, but on hybrid backbones it is not bit-identical to "
-                 "the per-question decode.\n";
+                 "--shared-prefix (side profiles, off by default) batches a request's rows "
+                 "into one multi-sequence decode; faster on long shared states, but on hybrid "
+                 "backbones the probabilities are not bit-identical (options are unchanged). "
+                 "The core dohnuts profile already batches this way.\n";
 }
 
 } // namespace

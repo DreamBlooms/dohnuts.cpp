@@ -236,10 +236,11 @@ also kept across calls in a bounded LRU (256 MiB, keyed by the exact prefix
 tokens), so a state seen before skips its prefill; the gain grows with state
 length and reuse. The side models share the same cache.
 
-`--shared-prefix` (the `official` profile only) evaluates a request's questions
-in one multi-sequence decode instead of one per question. It is faster, but on
-the Qwen3.5 hybrid backbone the probabilities shift in the low digits; the
-chosen options stay the same, so it is off by default.
+`--shared-prefix` (the side profiles; off by default) evaluates a request's rows
+in one multi-sequence decode instead of one per row. It is faster on long shared
+states, but on the Qwen3.5 hybrid backbone the probabilities shift in the low
+digits; the chosen options stay the same. The core `dohnuts` profile already
+batches this way.
 
 ## Other decision models
 

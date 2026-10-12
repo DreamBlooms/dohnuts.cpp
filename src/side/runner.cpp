@@ -1,5 +1,6 @@
 #include "dohnuts/side/runner.hpp"
 
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -46,6 +47,16 @@ struct runner::impl {
     int mask_id = -1;
     int n_seq_max = 1;
     int offset = 0;   // leading tokens of the last decode that preceded its output batch
+
+    // Batch-branches state (see begin_batch).
+    bool batch_active = false;
+    size_t batch_row = 0;
+    // per row: absolute position -> (is_logits, output ordinal)
+    std::vector<std::map<int32_t, std::pair<int8_t, int32_t>>> batch_ord;
+    const float * batch_logits = nullptr;
+    const float * batch_embd = nullptr;
+    int batch_n_vocab = 0;
+    int batch_n_embd_out = 0;
 
     // Cross-request LRU of decoded prefixes, keyed by the exact prefix tokens.
     prefix_cache cache;
@@ -127,6 +138,7 @@ int runner::single_token(const std::string & text) const {
 }
 
 void runner::decode(const std::vector<int32_t> & ids, int logits_index, size_t prefix, bool keep) {
+    if (p->batch_active) return;   // rows were decoded together in begin_batch
     if ((int) ids.size() > p->max_length) throw std::length_error("Input exceeds the token budget");
     llama_memory_t memory = llama_get_memory(p->ctx);
     llama_memory_clear(memory, true);
@@ -161,6 +173,12 @@ void runner::decode(const std::vector<int32_t> & ids, int logits_index, size_t p
 // Outputs of the last decode are indexed from its first decoded token, so a
 // restored prefix shifts them.
 const float * runner::logits_at(int index) const {
+    if (p->batch_active) {
+        const auto it = p->batch_ord[p->batch_row].find((int32_t) index);
+        if (it == p->batch_ord[p->batch_row].end() || it->second.first == 0 || p->batch_logits == nullptr)
+            throw std::out_of_range("Logits requested at an unread batch position");
+        return p->batch_logits + (size_t) it->second.second * p->batch_n_vocab;
+    }
     if (index < p->offset) throw std::out_of_range("Logits requested inside the cached prefix");
     const float * logits = llama_get_logits_ith(p->ctx, index - p->offset);
     if (!logits) throw std::runtime_error("Logits unavailable");
@@ -190,11 +208,101 @@ void runner::decode_canvas(const std::vector<int32_t> & ids, int read_index) {
 }
 
 const float * runner::embeddings_at(int index) const {
+    if (p->batch_active) {
+        const auto it = p->batch_ord[p->batch_row].find((int32_t) index);
+        if (it == p->batch_ord[p->batch_row].end() || it->second.first != 0 || p->batch_embd == nullptr)
+            throw std::out_of_range("Embeddings requested at an unread batch position");
+        return p->batch_embd + (size_t) it->second.second * p->batch_n_embd_out;
+    }
     if (index < p->offset) throw std::out_of_range("Embeddings requested inside the cached prefix");
     const float * embeddings = llama_get_embeddings_ith(p->ctx, index - p->offset);
     if (!embeddings) throw std::runtime_error("Embeddings unavailable");
     return embeddings;
 }
+
+void runner::begin_batch(const std::vector<std::vector<int32_t>> & rows,
+                         const std::vector<std::vector<int32_t>> & reads,
+                         const std::vector<int8_t> & logits,
+                         size_t prefix) {
+    if (rows.size() < 2) throw std::invalid_argument("begin_batch needs at least two rows");
+    if ((int) rows.size() > p->n_seq_max) throw std::length_error("Too many rows for the context");
+    if (prefix == 0) throw std::invalid_argument("begin_batch needs a non-empty prefix");
+    for (const auto & row : rows) {
+        if (prefix > row.size()) throw std::invalid_argument("shared prefix longer than a row");
+    }
+
+    llama_memory_clear(llama_get_memory(p->ctx), true);
+
+    llama_batch_ext * batch = llama_batch_ext_init(p->ctx);
+    auto add = [&](llama_seq_id seq, llama_token id, llama_pos pos) -> int32_t {
+        const int32_t idx = llama_batch_ext_add_token(batch, seq, id);
+        if (idx < 0) {
+            llama_batch_ext_free(batch);
+            throw std::runtime_error("llama_batch_ext_add_token failed");
+        }
+        llama_batch_ext_set_pos(batch, idx, &pos);
+        return idx;
+    };
+
+    // The shared prefix is added once and attached to every sequence.
+    std::vector<int32_t> prefix_idx(prefix);
+    for (size_t i = 0; i < prefix; ++i) prefix_idx[i] = add(0, rows[0][i], (llama_pos) i);
+    for (llama_seq_id s = 1; s < (llama_seq_id) rows.size(); ++s) {
+        for (const int32_t idx : prefix_idx) llama_batch_ext_add_seq(batch, idx, s);
+    }
+
+    p->batch_ord.assign(rows.size(), {});
+    int32_t ord_logits = 0, ord_embd = 0;
+    for (size_t r = 0; r < rows.size(); ++r) {
+        const bool want_logits = logits[r] != 0;
+        for (size_t i = prefix; i < rows[r].size(); ++i) {
+            const int32_t idx = add((llama_seq_id) r, rows[r][i], (llama_pos) i);
+            for (const int32_t pos : reads[r]) {
+                if ((int32_t) i != pos) continue;
+                if (want_logits) {
+                    llama_batch_ext_set_output_logits(batch, idx, true);
+                    p->batch_ord[r][pos] = {1, ord_logits++};
+                } else {
+                    llama_batch_ext_set_output_embd(batch, idx, true);
+                    p->batch_ord[r][pos] = {0, ord_embd++};
+                }
+            }
+        }
+    }
+
+    const int rc = llama_process(p->ctx, LLAMA_PROCESS_TYPE_DECODE, batch);
+    llama_batch_ext_free(batch);
+    if (rc != 0) throw std::runtime_error("llama_process failed");
+
+    p->batch_logits = llama_get_logits(p->ctx);
+    p->batch_embd = p->embeddings ? llama_get_embeddings(p->ctx) : nullptr;
+    p->batch_n_vocab = llama_vocab_n_tokens(p->vocab);
+    p->batch_n_embd_out = llama_model_n_embd_out(p->model);
+    p->batch_active = true;
+    p->batch_row = 0;
+}
+
+void runner::select_row(size_t row) {
+    if (!p->batch_active || row >= p->batch_ord.size()) throw std::out_of_range("select_row out of range");
+    p->batch_row = row;
+}
+
+void runner::end_batch() {
+    if (!p->batch_active) return;
+    // Free the extra sequences created for the batch; seq 0 is cleared by the
+    // next decode. Without this their copied prefix KV accumulates.
+    llama_memory_t mem = llama_get_memory(p->ctx);
+    for (llama_seq_id s = 1; s < (llama_seq_id) p->batch_ord.size(); ++s) {
+        llama_memory_seq_rm(mem, s, -1, -1);
+    }
+    p->batch_active = false;
+    p->batch_row = 0;
+    p->batch_ord.clear();
+    p->batch_logits = nullptr;
+    p->batch_embd = nullptr;
+}
+
+bool runner::batching() const { return p->batch_active; }
 
 std::vector<std::vector<std::vector<float>>> runner::decode_shared(
         const std::vector<std::vector<int32_t>> & rows,

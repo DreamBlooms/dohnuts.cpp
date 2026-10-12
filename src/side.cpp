@@ -1,5 +1,6 @@
 #include "dohnuts/side.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <numeric>
 #include <stdexcept>
@@ -48,6 +49,25 @@ json common_answer(const side::planned_question & q, const std::vector<double> &
     return answer;
 }
 
+// Longest token prefix shared by every row, stopped before each row's reads so
+// a read never lands inside the shared prefix.
+size_t common_prefix(const std::vector<side::planned_row> & rows) {
+    if (rows.size() < 2) return 0;
+    const std::vector<int32_t> & base = rows[0].ids;
+    size_t shared = base.empty() ? 0 : base.size() - 1;
+    for (const auto & r : rows) {
+        size_t n = std::min(base.size(), r.ids.size());
+        if (n > 0) n -= 1;
+        size_t k = 0;
+        while (k < n && base[k] == r.ids[k]) ++k;
+        shared = std::min(shared, k);
+        int first = r.slot_rel;
+        for (int p : r.option_rel) first = (first < 0) ? p : std::min(first, p);
+        if (first >= 0) shared = std::min(shared, (size_t) first);
+    }
+    return shared;
+}
+
 } // namespace
 
 struct side_engine::impl {
@@ -55,6 +75,7 @@ struct side_engine::impl {
     int gpu_layers = 0;
     std::unique_ptr<side::runner> backend;
     std::unique_ptr<side::profile> handler;
+    bool shared_prefix = false;
 #ifdef DOHNUTS_DECISION_INTEROP
     std::unique_ptr<side::official_engine> official;
 #endif
@@ -87,11 +108,10 @@ side_engine::side_engine(const side_options & options) : p(std::make_unique<impl
         || (p->kind == model_profile::official
             && (decision_type == "kev" || decision_type == "laya"));
     ropts.diffusion = p->kind == model_profile::jad;
-#ifdef DOHNUTS_DECISION_INTEROP
-    // --shared-prefix batches a request's questions into one decode; it needs
-    // room for one sequence per row.
-    if (p->kind == model_profile::official && options.shared_prefix) ropts.n_seq_max = 8;
-#endif
+    p->shared_prefix = options.shared_prefix;
+    // --shared-prefix batches a request's rows into one decode; it needs room for
+    // one sequence per row. The diffusion (jad) profile uses its own canvas path.
+    if (options.shared_prefix && p->kind != model_profile::jad) ropts.n_seq_max = 8;
     ropts.flash_attn = options.flash_attn;
     p->backend = std::make_unique<side::runner>(ropts);
 
@@ -166,11 +186,50 @@ json side_engine::predict(const json & requests, bool raw) const {
         std::vector<std::vector<double>> row_probs;
         row_probs.reserve(rows.size());
         int input_tokens = 0;
-        for (auto & row : rows) {
-            row.keep = rows.size() > 1;   // every row of a request starts with its state
-            input_tokens += (int) row.ids.size();
-            row_probs.push_back(p->handler->score(row));
+
+        // --shared-prefix: decode the request's rows in one multi-sequence batch
+        // (any non-diffusion profile). Falls back to per-row decode otherwise.
+        bool batching = p->shared_prefix && rows.size() > 1 && p->kind != model_profile::jad;
+        if (batching) {
+            const size_t shared = common_prefix(rows);
+            size_t total = shared;
+            for (const auto & r : rows) total += r.ids.size() - shared;
+            if (shared == 0 || total > (size_t) p->backend->max_length()) {
+                batching = false;
+            } else {
+                std::vector<std::vector<int32_t>> ids, reads;
+                std::vector<int8_t> logits;
+                ids.reserve(rows.size());
+                reads.reserve(rows.size());
+                logits.reserve(rows.size());
+                for (const auto & r : rows) {
+                    ids.push_back(r.ids);
+                    std::vector<int32_t> rd;
+                    rd.push_back(r.slot_rel);
+                    if (r.letters.empty()) {
+                        for (int p : r.option_rel) rd.push_back(p);   // pointer/marker readout
+                        logits.push_back(0);
+                    } else {
+                        logits.push_back(1);                          // LM-head labels
+                    }
+                    reads.push_back(std::move(rd));
+                }
+                p->backend->begin_batch(ids, reads, logits, shared);
+            }
         }
+
+        try {
+            for (size_t r = 0; r < rows.size(); ++r) {
+                rows[r].keep = rows.size() > 1;   // every row of a request starts with its state
+                input_tokens += (int) rows[r].ids.size();
+                if (batching) p->backend->select_row(r);
+                row_probs.push_back(p->handler->score(rows[r]));
+            }
+        } catch (...) {
+            if (batching) p->backend->end_batch();
+            throw;
+        }
+        if (batching) p->backend->end_batch();
 
         json answers = json::object();
         for (const auto & q : plan) {

@@ -76,6 +76,20 @@ public:
     // only (the mask slot). For diffusion profiles; ignores the prefix cache.
     void decode_canvas(const std::vector<int32_t> & ids, int read_index);
 
+    // Batch-branches: decode rows that share their first `prefix` tokens in one
+    // multi-sequence forward (any profile). `reads[r]` are the absolute token
+    // positions row r reads; `logits[r]` selects logits (1) or embeddings (0).
+    // Call select_row(r) before each read. While active decode() is a no-op and
+    // logits_at/embeddings_at read the batched outputs. Faster than decoding each
+    // row, but on hybrid backbones it is not bit-identical, so it is opt-in.
+    void begin_batch(const std::vector<std::vector<int32_t>> & rows,
+                     const std::vector<std::vector<int32_t>> & reads,
+                     const std::vector<int8_t> & logits,
+                     size_t prefix);
+    void select_row(size_t row);
+    void end_batch();
+    bool batching() const;
+
     // Evaluates rows that share their first `prefix` tokens in one batch (each
     // row as its own sequence; needs n_seq_max >= rows.size()). `positions[r]`
     // are the absolute token positions to read for row r. Returns, per row, one
