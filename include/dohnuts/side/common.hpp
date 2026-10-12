@@ -14,6 +14,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "dohnuts/sys.hpp"
 #include "dohnuts/side/runner.hpp"
 
 namespace dohnuts::side {
@@ -28,8 +29,7 @@ inline std::string trim(const std::string & value) {
 }
 
 inline std::string to_utf8(const std::filesystem::path & path) {
-    const auto utf8 = path.u8string();
-    return std::string(utf8.begin(), utf8.end());
+    return dohnuts::to_utf8(path);
 }
 
 // Insertion-order JSON with Python's default separators (", ", ": ").

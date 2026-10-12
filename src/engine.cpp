@@ -1,5 +1,6 @@
 #include "dohnuts/engine.hpp"
 
+#include "dohnuts/decode.hpp"
 #include "dohnuts/sys.hpp"
 
 #include <algorithm>
@@ -38,34 +39,6 @@ std::vector<float> read_head(const std::filesystem::path & path, int expected) {
     file.read(reinterpret_cast<char *>(values.data()), size);
     if (!file) throw std::runtime_error("Truncated head weights");
     return values;
-}
-
-// llama.cpp takes UTF-8 paths; std::filesystem::path::c_str() is wchar_t on
-// Windows, so convert explicitly.
-std::string to_utf8(const std::filesystem::path & path) {
-    const auto utf8 = path.u8string();
-    return std::string(utf8.begin(), utf8.end());
-}
-
-// One extended-batch decode. `out[i]` selects whether token i produces output.
-int decode_ext(llama_context * ctx,
-               const std::vector<llama_token> & toks,
-               const std::vector<llama_pos> & pos,
-               const std::vector<llama_seq_id> & seq,
-               const std::vector<int8_t> & out) {
-    llama_batch_ext * batch = llama_batch_ext_init(ctx);
-    for (size_t i = 0; i < toks.size(); ++i) {
-        const int32_t idx = llama_batch_ext_add_token(batch, seq[i], toks[i]);
-        if (idx < 0) {
-            llama_batch_ext_free(batch);
-            return -1;
-        }
-        llama_batch_ext_set_pos(batch, idx, &pos[i]);
-        llama_batch_ext_set_output_embd(batch, idx, out[i] != 0);
-    }
-    const int rc = llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch);
-    llama_batch_ext_free(batch);
-    return rc;
 }
 
 } // namespace
@@ -480,7 +453,7 @@ void engine::score_image_group(const std::vector<std::string> & prompts,
             std::vector<llama_token> pt(tails[0].begin(), tails[0].begin() + shared);
             std::vector<llama_pos> pos(shared);
             for (size_t i = 0; i < shared; ++i) pos[i] = n_past + (llama_pos) i;
-            if (decode_ext(p->ctx, pt, pos, std::vector<llama_seq_id>(shared, 0),
+            if (decode_tokens(p->ctx, pt, pos, std::vector<llama_seq_id>(shared, 0),
                            std::vector<int8_t>(shared, 0)) != 0)
                 fail("llama_process failed");
             n_past += (llama_pos) shared;
@@ -505,7 +478,7 @@ void engine::score_image_group(const std::vector<std::string> & prompts,
                 out[i] = is_marker ? 1 : 0;
                 if (is_marker) local_marker.push_back((int) i);
             }
-            if (decode_ext(p->ctx, toks, pos, std::vector<llama_seq_id>(n, (llama_seq_id) r), out) != 0)
+            if (decode_tokens(p->ctx, toks, pos, std::vector<llama_seq_id>(n, (llama_seq_id) r), out) != 0)
                 fail("llama_process failed");
             if (local_marker.size() != labels[start + r].size())
                 fail("Marker count does not match candidate count");
@@ -557,7 +530,7 @@ void engine::decode_pass(const std::vector<std::vector<llama_token>> & token_row
                    const std::vector<llama_pos> & pos,
                    const std::vector<llama_seq_id> & seq,
                    const std::vector<int8_t> & out) {
-        if (decode_ext(p->ctx, toks, pos, seq, out) != 0)
+        if (decode_tokens(p->ctx, toks, pos, seq, out) != 0)
             throw std::runtime_error("llama_process failed");
     };
 

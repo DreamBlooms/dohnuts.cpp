@@ -7,6 +7,7 @@
 
 #include "dohnuts/prefix_cache.hpp"
 #include "dohnuts/sys.hpp"
+#include "dohnuts/decode.hpp"
 #include "dohnuts/side/common.hpp"
 #include "llama.h"
 
@@ -16,24 +17,18 @@ namespace {
 // Decodes ids[begin, end) at their own positions onto the current memory.
 void decode_range(llama_context * ctx, const std::vector<int32_t> & ids, size_t begin,
                   size_t end, int logits_index, bool embeddings) {
-    llama_batch_ext * batch = llama_batch_ext_init(ctx);
+    const size_t n = end - begin;
+    std::vector<llama_token> toks(n);
+    std::vector<llama_pos> pos(n);
+    std::vector<llama_seq_id> seq(n, 0);
+    std::vector<int8_t> out(n);
     for (size_t i = begin; i < end; ++i) {
-        const int32_t idx = llama_batch_ext_add_token(batch, 0, ids[i]);
-        if (idx < 0) {
-            llama_batch_ext_free(batch);
-            throw std::runtime_error("llama_batch_ext_add_token failed");
-        }
-        const llama_pos pos = (llama_pos) i;
-        llama_batch_ext_set_pos(batch, idx, &pos);
-        if (embeddings) {
-            llama_batch_ext_set_output_embd(batch, idx, true);
-        } else {
-            llama_batch_ext_set_output_logits(batch, idx, (int) i == logits_index);
-        }
+        const size_t j = i - begin;
+        toks[j] = ids[i];
+        pos[j] = (llama_pos) i;
+        out[j] = (embeddings || (int) i == logits_index) ? 1 : 0;
     }
-    const int rc = llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch);
-    llama_batch_ext_free(batch);
-    if (rc != 0) throw std::runtime_error("llama_process failed");
+    if (decode_tokens(ctx, toks, pos, seq, out) != 0) throw std::runtime_error("llama_process failed");
 }
 
 } // namespace
@@ -181,20 +176,15 @@ void runner::decode_canvas(const std::vector<int32_t> & ids, int read_index) {
     p->offset = 0;
 
     llama_set_causal_attn(p->ctx, false);
-    llama_batch_ext * batch = llama_batch_ext_init(p->ctx);
+    std::vector<llama_token> toks(ids.begin(), ids.end());
+    std::vector<llama_pos> pos(ids.size());
+    std::vector<llama_seq_id> seq(ids.size(), 0);
+    std::vector<int8_t> out(ids.size());
     for (size_t i = 0; i < ids.size(); ++i) {
-        const int32_t idx = llama_batch_ext_add_token(batch, 0, ids[i]);
-        if (idx < 0) {
-            llama_batch_ext_free(batch);
-            llama_set_causal_attn(p->ctx, true);
-            throw std::runtime_error("llama_batch_ext_add_token failed");
-        }
-        const llama_pos pos = (llama_pos) i;
-        llama_batch_ext_set_pos(batch, idx, &pos);
-        llama_batch_ext_set_output_logits(batch, idx, (int) i == read_index);
+        pos[i] = (llama_pos) i;
+        out[i] = ((int) i == read_index) ? 1 : 0;
     }
-    const int rc = llama_process(p->ctx, LLAMA_PROCESS_TYPE_DECODE, batch);
-    llama_batch_ext_free(batch);
+    const int rc = decode_tokens(p->ctx, toks, pos, seq, out);
     llama_set_causal_attn(p->ctx, true);
     if (rc != 0) throw std::runtime_error("llama_process failed");
 }
