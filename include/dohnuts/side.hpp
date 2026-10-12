@@ -29,6 +29,7 @@ struct side_options {
     int gpu_layers = 0;
     std::string device;
     int max_length = 0;   // 0 = take the profile config's max_length, else 4096.
+    bool shared_prefix = false;  // official: batch the request's questions into one decode
     flash_attn_mode flash_attn = flash_attn_mode::automatic;
 };
 

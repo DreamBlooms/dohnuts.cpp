@@ -87,12 +87,17 @@ side_engine::side_engine(const side_options & options) : p(std::make_unique<impl
         || (p->kind == model_profile::official
             && (decision_type == "kev" || decision_type == "laya"));
     ropts.diffusion = p->kind == model_profile::jad;
+#ifdef DOHNUTS_DECISION_INTEROP
+    // --shared-prefix batches a request's questions into one decode; it needs
+    // room for one sequence per row.
+    if (p->kind == model_profile::official && options.shared_prefix) ropts.n_seq_max = 8;
+#endif
     ropts.flash_attn = options.flash_attn;
     p->backend = std::make_unique<side::runner>(ropts);
 
 #ifdef DOHNUTS_DECISION_INTEROP
     if (p->kind == model_profile::official) {
-        p->official = std::make_unique<side::official_engine>(*p->backend, config);
+        p->official = std::make_unique<side::official_engine>(*p->backend, config, options.shared_prefix);
         return;
     }
 #else

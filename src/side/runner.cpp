@@ -16,19 +16,24 @@ namespace {
 // Decodes ids[begin, end) at their own positions onto the current memory.
 void decode_range(llama_context * ctx, const std::vector<int32_t> & ids, size_t begin,
                   size_t end, int logits_index, bool embeddings) {
-    auto batch = llama_batch_init((int32_t) (end - begin), 0, 1);
-    batch.n_tokens = (int32_t) (end - begin);
+    llama_batch_ext * batch = llama_batch_ext_init(ctx);
     for (size_t i = begin; i < end; ++i) {
-        const size_t j = i - begin;
-        batch.token[j] = ids[i];
-        batch.pos[j] = (llama_pos) i;
-        batch.n_seq_id[j] = 1;
-        batch.seq_id[j][0] = 0;
-        batch.logits[j] = (!embeddings && (int) i == logits_index) ? 1 : 0;
+        const int32_t idx = llama_batch_ext_add_token(batch, 0, ids[i]);
+        if (idx < 0) {
+            llama_batch_ext_free(batch);
+            throw std::runtime_error("llama_batch_ext_add_token failed");
+        }
+        const llama_pos pos = (llama_pos) i;
+        llama_batch_ext_set_pos(batch, idx, &pos);
+        if (embeddings) {
+            llama_batch_ext_set_output_embd(batch, idx, true);
+        } else {
+            llama_batch_ext_set_output_logits(batch, idx, (int) i == logits_index);
+        }
     }
-    const int rc = llama_decode(ctx, batch);
-    llama_batch_free(batch);
-    if (rc != 0) throw std::runtime_error("llama_decode failed");
+    const int rc = llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch);
+    llama_batch_ext_free(batch);
+    if (rc != 0) throw std::runtime_error("llama_process failed");
 }
 
 } // namespace
@@ -44,6 +49,7 @@ struct runner::impl {
     bool embeddings = false;
     bool diffusion = false;
     int mask_id = -1;
+    int n_seq_max = 1;
     int offset = 0;   // leading tokens of the last decode that preceded its output batch
 
     // Cross-request LRU of decoded prefixes, keyed by the exact prefix tokens.
@@ -85,13 +91,16 @@ runner::runner(const runner_options & options) : p(std::make_unique<impl>()) {
         throw std::runtime_error("Model has no mask token (not a masked-diffusion model)");
 
     auto cparams = llama_context_default_params();
-    cparams.n_ctx = p->max_length;
+    p->n_seq_max = std::max(1, options.n_seq_max);
+    // Reserve a full token budget per sequence when rows are batched.
+    cparams.n_ctx = p->max_length * p->n_seq_max;
     cparams.n_batch = std::max(options.n_batch, p->max_length);
     // A non-causal read attends over the whole sequence at once, so it must fit
     // in one ubatch; the causal profiles keep the smaller ubatch.
     cparams.n_ubatch = p->diffusion ? p->max_length
                                     : std::min(std::max(options.n_batch, 1), p->max_length);
-    cparams.n_seq_max = 1;
+    cparams.n_seq_max = p->n_seq_max;
+    if (p->n_seq_max > 1) cparams.kv_unified = true;
     cparams.embeddings = p->embeddings;
     cparams.pooling_type = LLAMA_POOLING_TYPE_NONE;
     cparams.flash_attn_type = to_llama_flash_attn(options.flash_attn);
@@ -172,19 +181,22 @@ void runner::decode_canvas(const std::vector<int32_t> & ids, int read_index) {
     p->offset = 0;
 
     llama_set_causal_attn(p->ctx, false);
-    auto batch = llama_batch_init((int32_t) ids.size(), 0, 1);
-    batch.n_tokens = (int32_t) ids.size();
+    llama_batch_ext * batch = llama_batch_ext_init(p->ctx);
     for (size_t i = 0; i < ids.size(); ++i) {
-        batch.token[i] = ids[i];
-        batch.pos[i] = (llama_pos) i;
-        batch.n_seq_id[i] = 1;
-        batch.seq_id[i][0] = 0;
-        batch.logits[i] = ((int) i == read_index) ? 1 : 0;
+        const int32_t idx = llama_batch_ext_add_token(batch, 0, ids[i]);
+        if (idx < 0) {
+            llama_batch_ext_free(batch);
+            llama_set_causal_attn(p->ctx, true);
+            throw std::runtime_error("llama_batch_ext_add_token failed");
+        }
+        const llama_pos pos = (llama_pos) i;
+        llama_batch_ext_set_pos(batch, idx, &pos);
+        llama_batch_ext_set_output_logits(batch, idx, (int) i == read_index);
     }
-    const int rc = llama_decode(p->ctx, batch);
-    llama_batch_free(batch);
+    const int rc = llama_process(p->ctx, LLAMA_PROCESS_TYPE_DECODE, batch);
+    llama_batch_ext_free(batch);
     llama_set_causal_attn(p->ctx, true);
-    if (rc != 0) throw std::runtime_error("llama_decode failed");
+    if (rc != 0) throw std::runtime_error("llama_process failed");
 }
 
 const float * runner::embeddings_at(int index) const {
@@ -192,6 +204,72 @@ const float * runner::embeddings_at(int index) const {
     const float * embeddings = llama_get_embeddings_ith(p->ctx, index - p->offset);
     if (!embeddings) throw std::runtime_error("Embeddings unavailable");
     return embeddings;
+}
+
+std::vector<std::vector<std::vector<float>>> runner::decode_shared(
+        const std::vector<std::vector<int32_t>> & rows,
+        size_t prefix,
+        const std::vector<std::vector<int32_t>> & positions,
+        bool logits) {
+    if (rows.empty()) return {};
+    if ((int) rows.size() > p->n_seq_max) throw std::length_error("Too many rows for the context");
+    if (prefix == 0) throw std::invalid_argument("decode_shared needs a non-empty prefix");
+    for (const auto & row : rows) {
+        if (prefix > row.size()) throw std::invalid_argument("shared prefix longer than a row");
+    }
+
+    llama_memory_clear(llama_get_memory(p->ctx), true);
+
+    llama_batch_ext * batch = llama_batch_ext_init(p->ctx);
+    auto add = [&](llama_seq_id seq, llama_token id, llama_pos pos) -> int32_t {
+        const int32_t idx = llama_batch_ext_add_token(batch, seq, id);
+        if (idx < 0) {
+            llama_batch_ext_free(batch);
+            throw std::runtime_error("llama_batch_ext_add_token failed");
+        }
+        llama_batch_ext_set_pos(batch, idx, &pos);
+        return idx;
+    };
+
+    // The shared prefix is added once and attached to every sequence.
+    std::vector<int32_t> prefix_idx;
+    prefix_idx.reserve(prefix);
+    for (size_t i = 0; i < prefix; ++i) prefix_idx.push_back(add(0, rows[0][i], (llama_pos) i));
+    for (llama_seq_id seq = 1; seq < (llama_seq_id) rows.size(); ++seq) {
+        for (const int32_t idx : prefix_idx) llama_batch_ext_add_seq(batch, idx, seq);
+    }
+
+    // Tails, remembering the order in which outputs are flagged.
+    std::vector<std::pair<size_t, size_t>> order;   // (row, position index)
+    for (size_t r = 0; r < rows.size(); ++r) {
+        for (size_t i = prefix; i < rows[r].size(); ++i) {
+            const int32_t idx = add((llama_seq_id) r, rows[r][i], (llama_pos) i);
+            for (size_t k = 0; k < positions[r].size(); ++k) {
+                if ((int32_t) i == positions[r][k]) {
+                    if (logits) llama_batch_ext_set_output_logits(batch, idx, true);
+                    else        llama_batch_ext_set_output_embd(batch, idx, true);
+                    order.emplace_back(r, k);
+                }
+            }
+        }
+    }
+
+    const int rc = llama_process(p->ctx, LLAMA_PROCESS_TYPE_DECODE, batch);
+    llama_batch_ext_free(batch);
+    if (rc != 0) throw std::runtime_error("llama_process failed");
+
+    const size_t width = logits ? (size_t) llama_vocab_n_tokens(p->vocab)
+                                : (size_t) llama_model_n_embd_out(p->model);
+    const float * out = logits ? llama_get_logits(p->ctx) : llama_get_embeddings(p->ctx);
+    if (out == nullptr) throw std::runtime_error("shared decode: outputs unavailable");
+
+    std::vector<std::vector<std::vector<float>>> res(rows.size());
+    for (size_t r = 0; r < rows.size(); ++r) res[r].resize(positions[r].size());
+    for (size_t j = 0; j < order.size(); ++j) {
+        const float * ptr = out + j * width;
+        res[order[j].first][order[j].second].assign(ptr, ptr + width);
+    }
+    return res;
 }
 
 std::string runner::backend_name() const {

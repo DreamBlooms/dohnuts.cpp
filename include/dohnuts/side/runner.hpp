@@ -24,6 +24,7 @@ struct runner_options {
     int max_length = 4096;
     bool embeddings = false;   // kev needs hidden states; decider does not
     bool diffusion = false;    // LLaDA-MoE: non-causal, mask-seeded readout
+    int n_seq_max = 1;         // >1 enables decode_shared (one sequence per row)
     flash_attn_mode flash_attn = flash_attn_mode::automatic;
 };
 
@@ -74,6 +75,19 @@ public:
     // Decodes ids as one non-causal sequence and emits logits at `read_index`
     // only (the mask slot). For diffusion profiles; ignores the prefix cache.
     void decode_canvas(const std::vector<int32_t> & ids, int read_index);
+
+    // Evaluates rows that share their first `prefix` tokens in one batch (each
+    // row as its own sequence; needs n_seq_max >= rows.size()). `positions[r]`
+    // are the absolute token positions to read for row r. Returns, per row, one
+    // copied output vector per requested position: a logits row (n_vocab) when
+    // `logits`, else an embeddings row (n_embd_out). Faster than decoding each
+    // row, but on hybrid backbones it is not numerically identical to a full
+    // per-row decode, so callers gate it behind an opt-in switch.
+    std::vector<std::vector<std::vector<float>>> decode_shared(
+        const std::vector<std::vector<int32_t>> & rows,
+        size_t prefix,
+        const std::vector<std::vector<int32_t>> & positions,
+        bool logits);
 
 private:
     struct impl;

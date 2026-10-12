@@ -47,6 +47,27 @@ std::string to_utf8(const std::filesystem::path & path) {
     return std::string(utf8.begin(), utf8.end());
 }
 
+// One extended-batch decode. `out[i]` selects whether token i produces output.
+int decode_ext(llama_context * ctx,
+               const std::vector<llama_token> & toks,
+               const std::vector<llama_pos> & pos,
+               const std::vector<llama_seq_id> & seq,
+               const std::vector<int8_t> & out) {
+    llama_batch_ext * batch = llama_batch_ext_init(ctx);
+    for (size_t i = 0; i < toks.size(); ++i) {
+        const int32_t idx = llama_batch_ext_add_token(batch, seq[i], toks[i]);
+        if (idx < 0) {
+            llama_batch_ext_free(batch);
+            return -1;
+        }
+        llama_batch_ext_set_pos(batch, idx, &pos[i]);
+        llama_batch_ext_set_output_embd(batch, idx, out[i] != 0);
+    }
+    const int rc = llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch);
+    llama_batch_ext_free(batch);
+    return rc;
+}
+
 } // namespace
 
 namespace {
@@ -456,18 +477,12 @@ void engine::score_image_group(const std::vector<std::string> & prompts,
 
         // 2. Decode the shared tail prefix into sequence 0 as well.
         if (shared > 0) {
-            auto batch = llama_batch_init((int32_t) shared, 0, 1);
-            batch.n_tokens = (int32_t) shared;
-            std::memcpy(batch.token, tails[0].data(), shared * sizeof(llama_token));
-            for (size_t i = 0; i < shared; ++i) {
-                batch.pos[i] = n_past + (llama_pos) i;
-                batch.n_seq_id[i] = 1;
-                batch.seq_id[i][0] = 0;
-                batch.logits[i] = 0;
-            }
-            const int rc = llama_decode(p->ctx, batch);
-            llama_batch_free(batch);
-            if (rc != 0) fail("llama_decode failed");
+            std::vector<llama_token> pt(tails[0].begin(), tails[0].begin() + shared);
+            std::vector<llama_pos> pos(shared);
+            for (size_t i = 0; i < shared; ++i) pos[i] = n_past + (llama_pos) i;
+            if (decode_ext(p->ctx, pt, pos, std::vector<llama_seq_id>(shared, 0),
+                           std::vector<int8_t>(shared, 0)) != 0)
+                fail("llama_process failed");
             n_past += (llama_pos) shared;
         }
 
@@ -480,22 +495,18 @@ void engine::score_image_group(const std::vector<std::string> & prompts,
             results[start + r].tokens = (int) total_tokens[r];
             const size_t n = tails[r].size() - shared;
             if (n == 0) continue;
-            const llama_token * toks = tails[r].data() + shared;
-            auto batch = llama_batch_init((int32_t) n, 0, 1);
-            batch.n_tokens = (int32_t) n;
-            std::memcpy(batch.token, toks, n * sizeof(llama_token));
+            std::vector<llama_token> toks(tails[r].begin() + shared, tails[r].end());
+            std::vector<llama_pos> pos(n);
+            std::vector<int8_t> out(n, 0);
             std::vector<int> local_marker;
             for (size_t i = 0; i < n; ++i) {
-                batch.pos[i] = n_past + (llama_pos) i;
-                batch.n_seq_id[i] = 1;
-                batch.seq_id[i][0] = (llama_seq_id) r;
+                pos[i] = n_past + (llama_pos) i;
                 const bool is_marker = toks[i] == p->marker;
-                batch.logits[i] = is_marker ? 1 : 0;
+                out[i] = is_marker ? 1 : 0;
                 if (is_marker) local_marker.push_back((int) i);
             }
-            const int rc = llama_decode(p->ctx, batch);
-            llama_batch_free(batch);
-            if (rc != 0) fail("llama_decode failed");
+            if (decode_ext(p->ctx, toks, pos, std::vector<llama_seq_id>(n, (llama_seq_id) r), out) != 0)
+                fail("llama_process failed");
             if (local_marker.size() != labels[start + r].size())
                 fail("Marker count does not match candidate count");
             for (size_t k = 0; k < local_marker.size(); ++k) {
@@ -546,19 +557,8 @@ void engine::decode_pass(const std::vector<std::vector<llama_token>> & token_row
                    const std::vector<llama_pos> & pos,
                    const std::vector<llama_seq_id> & seq,
                    const std::vector<int8_t> & out) {
-        const size_t n = toks.size();
-        auto batch = llama_batch_init((int32_t) n, 0, 1);
-        batch.n_tokens = (int32_t) n;
-        std::memcpy(batch.token, toks.data(), n * sizeof(llama_token));
-        std::memcpy(batch.pos, pos.data(), n * sizeof(llama_pos));
-        for (size_t i = 0; i < n; ++i) {
-            batch.n_seq_id[i] = 1;
-            batch.seq_id[i][0] = seq[i];
-        }
-        std::memcpy(batch.logits, out.data(), n * sizeof(int8_t));
-        const int rc = llama_decode(p->ctx, batch);
-        llama_batch_free(batch);
-        if (rc != 0) throw std::runtime_error("llama_decode failed");
+        if (decode_ext(p->ctx, toks, pos, seq, out) != 0)
+            throw std::runtime_error("llama_process failed");
     };
 
     // Suffix batch: rows [start, start+count), positions continue from `shared`.

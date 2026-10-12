@@ -40,6 +40,7 @@ struct options {
     int gpu_layers = 0;
     size_t max_questions = 8;
     bool batching = true;
+    bool shared_prefix = false;
     bool raw = false;
     dohnuts::flash_attn_mode flash_attn = dohnuts::flash_attn_mode::automatic;
     bool list_devices = false;
@@ -75,7 +76,10 @@ void usage() {
                  "official (Official SystemOne Support) reads the prompt template and decision "
                  "metadata from an official llama.cpp decision GGUF; --metadata is optional there.\n"
                  "Note: the kev profile is deprecated - official llama.cpp ships KEV now, "
-                 "prefer --profile official with an official kev GGUF.\n";
+                 "prefer --profile official with an official kev GGUF.\n"
+                 "--shared-prefix (official only, off by default) batches a request's questions "
+                 "into one decode; faster, but on hybrid backbones it is not bit-identical to "
+                 "the per-question decode.\n";
 }
 
 } // namespace
@@ -107,6 +111,7 @@ int main(int argc, char ** argv) {
             else if (arg == "--device") opts.device = next();
             else if (arg == "--max-questions") opts.max_questions = std::stoul(next());
             else if (arg == "--no-batching") opts.batching = false;
+            else if (arg == "--shared-prefix") opts.shared_prefix = true;
             else if (arg == "--flash-attn") opts.flash_attn = dohnuts::flash_attn_mode::enabled;
             else if (arg.rfind("--flash-attn=", 0) == 0) {
                 const std::string value = arg.substr(std::strlen("--flash-attn="));
@@ -178,6 +183,7 @@ int main(int argc, char ** argv) {
             if (opts.ctx > 0) side_opts.max_length = opts.ctx;
             side_opts.gpu_layers = opts.gpu_layers;
             side_opts.device = opts.device;
+            side_opts.shared_prefix = opts.shared_prefix;
             side_opts.flash_attn = opts.flash_attn;
             auto eng = std::make_shared<dohnuts::side_engine>(side_opts);
             http.backend = eng->backend_name() + " on " + eng->device_name();

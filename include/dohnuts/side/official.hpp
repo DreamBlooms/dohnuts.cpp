@@ -16,7 +16,7 @@ class runner;
 
 class official_engine {
 public:
-    official_engine(runner & backend, const json & config);
+    official_engine(runner & backend, const json & config, bool shared_prefix = false);
     ~official_engine();
 
     official_engine(const official_engine &) = delete;
