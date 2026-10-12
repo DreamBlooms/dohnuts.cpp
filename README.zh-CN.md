@@ -218,6 +218,9 @@ Qwen3.5 为混合架构：18 层 gated delta net 与 6 层全注意力。CPU 上
 前缀还会跨调用保留在有界 LRU 中（256 MiB，按前缀 token 精确索引），因此重复出现的 state 可
 跳过 prefill；state 越长、复用越多，收益越明显。side 模型共用同一套缓存。
 
+`--shared-prefix`（仅 `official` profile）把一次请求的多个问题合并到**一次**多序列解码，而不是
+每题一次。它更快，但在 Qwen3.5 混合骨干上概率会有低位差异（所选选项不变），因此默认关闭。
+
 ## 其他决策模型
 
 CLI 还可运行 `decider`、`thisthat`、`kev`、`tev1`、`jet`、`jpt`、`neohorsejev` 与

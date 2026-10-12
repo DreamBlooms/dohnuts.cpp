@@ -236,6 +236,11 @@ also kept across calls in a bounded LRU (256 MiB, keyed by the exact prefix
 tokens), so a state seen before skips its prefill; the gain grows with state
 length and reuse. The side models share the same cache.
 
+`--shared-prefix` (the `official` profile only) evaluates a request's questions
+in one multi-sequence decode instead of one per question. It is faster, but on
+the Qwen3.5 hybrid backbone the probabilities shift in the low digits; the
+chosen options stay the same, so it is off by default.
+
 ## Other decision models
 
 The CLI also runs other decision-model families — `decider`, `thisthat`, `kev`,
