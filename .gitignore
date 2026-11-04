@@ -17,6 +17,9 @@ cmake_install.cmake
 __pycache__/
 *.pyc
 
+# Local design notes (not distributed)
+/docs/
+
 # Editors and OS
 .vscode/
 .idea/

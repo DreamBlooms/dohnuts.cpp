@@ -77,7 +77,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON
 cmake --build build -j --target dohnuts-cli
 ```
 
-llama.cpp is pinned to release `v0.6.0` as a submodule; `-DLLAMA_DIR=...` points
+llama.cpp is pinned to release `v0.8.0` as a submodule; `-DLLAMA_DIR=...` points
 the build at another checkout.
 
 ### Windows (cross-compile)
