@@ -259,7 +259,7 @@ when it is used).
 | Profile | Models | Readout | Weights | GGUF |
 | --- | --- | --- | --- | --- |
 | `official` | official llama.cpp decision GGUFs (`lev`, `kev`, `nimble`, ...) | prompt from the GGUF `systemone` template, readout by `<arch>.decision.type` | official llama.cpp | official GGUFs |
-| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | LM head restricted to the option letters at a single mask slot in the assistant turn (LLaDA-MoE masked diffusion) | LoRA merged | [7b-A1b(EarlyPreview)](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
+| `jad` | [JAD-S1-7B-A1B-v0.5](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-v0.5) | LM head restricted to the option letters at a single mask slot in the assistant turn (LLaDA-MoE masked diffusion) | LoRA merged | [7b-A1b(v0.5)](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-v0.5-GGUF) |
 | `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b), [decider-2b](https://huggingface.co/Mapika/decider-2b) | LM head restricted to the option letters at an `Answer: (` slot | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF), [2b](https://huggingface.co/DreamBlooms/decider-2b-GGUF) |
 | `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | LM head restricted to the option letters after the chat decision prompt | full fine-tune | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | LM head restricted to the option labels after the chat decision prompt, one temperature per question type | full fine-tune | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
@@ -307,7 +307,7 @@ build/dohnuts-cli --model work/side/neohorsejev-4b-q8_0.gguf \
   --head work/side/neohorsejev-head.f32 --metadata work/side/neohorsejev.json
 
 # jad: no scorer head; a LLaDA-MoE masked-diffusion read (4k context from jad.json)
-build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-EarlyPreview-Q8_0.gguf \
+build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-v0.5-Q8_0.gguf \
   --metadata work/side/jad.json
 ```
 
@@ -348,11 +348,12 @@ scripts/build_neohorsejev_gguf.sh <NeoHorse-Jev-4B-dir> work/side
 python3 scripts/export_neohorsejev_head.py <NeoHorse-Jev-4B>/pointer_head.safetensors \
   work/side/neohorsejev-head.f32
 
-# jad: merge the LoRA into LLaDA-MoE-7B-A1B, then convert directly
-scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-EarlyPreview-Q8_0.gguf
+# jad: merge the LoRA into LLaDA-MoE-7B-A1B, then convert (writes both F16 and Q8_0)
+scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-v0.5-Q8_0.gguf
 ```
 
-Every export is quantized to Q8_0. `kev` merges the LoRA in fp32 before
+Every export is quantized to Q8_0; the `jad` script also keeps the merged F16
+file beside the Q8_0 one. `kev` merges the LoRA in fp32 before
 conversion and writes `kev-head.f32` (the q and k pointer rows with their biases)
 plus `kev.json`. The same scripts handle the larger sizes with the matching base
 (Qwen3.5-2B for decider-2b, Qwen3.5-4B for kev-4b); pass `--stream` for a

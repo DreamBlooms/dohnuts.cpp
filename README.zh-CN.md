@@ -236,7 +236,7 @@ CLI 还可运行 `decider`、`thisthat`、`kev`、`tev1`、`jet`、`jpt`、`neoh
 | Profile | 模型 | 读出方式 | 权重 | GGUF |
 | --- | --- | --- | --- | --- |
 | `official` | 官方 llama.cpp 决策 GGUF（`lev`、`kev`、`nimble` 等） | 提示来自 GGUF 的 `systemone` 模板，读出由 `<arch>.decision.type` 决定 | 官方 llama.cpp | 官方 GGUF |
-| `jad` | [JAD-S1-7B-A1B-EarlyPreview](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview) | 在助手轮的单个 mask 槽位把 LM head 限制到选项字母（LLaDA-MoE 掩码扩散） | LoRA 合并 | [7b-A1b(EarlyPreview)](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-EarlyPreview-GGUF) |
+| `jad` | [JAD-S1-7B-A1B-v0.5](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-v0.5) | 在助手轮的单个 mask 槽位把 LM head 限制到选项字母（LLaDA-MoE 掩码扩散） | LoRA 合并 | [7b-A1b(v0.5)](https://huggingface.co/DreamBlooms/JAD-S1-7B-A1B-v0.5-GGUF) |
 | `decider` | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b)、[decider-2b](https://huggingface.co/Mapika/decider-2b) | 在 `Answer: (` 槽位将 LM head 限制到选项字母 | 全量微调 | [0.8b](https://huggingface.co/DreamBlooms/decider-0.8b-GGUF)、[2b](https://huggingface.co/DreamBlooms/decider-2b-GGUF) |
 | `tev1` | [Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental) | 在 chat 决策提示后把 LM head 限制到选项字母 | 全量微调 | [0.8b](https://huggingface.co/DreamBlooms/Tev1-0.8B-experimental-GGUF) |
 | `jet` | [jet](https://huggingface.co/michaljach/jet) | 在 chat 决策提示后把 LM head 限制到选项标签，按题型各用一个温度 | 全量微调 | [4b](https://huggingface.co/DreamBlooms/jet-GGUF) |
@@ -282,7 +282,7 @@ build/dohnuts-cli --model work/side/neohorsejev-4b-q8_0.gguf \
   --head work/side/neohorsejev-head.f32 --metadata work/side/neohorsejev.json
 
 # jad：无打分头；LLaDA-MoE 掩码扩散读出（jad.json 给出 4k 上下文）
-build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-EarlyPreview-Q8_0.gguf \
+build/dohnuts-cli --model work/side/JAD-S1-7B-A1B-v0.5-Q8_0.gguf \
   --metadata work/side/jad.json
 ```
 
@@ -321,11 +321,11 @@ scripts/build_neohorsejev_gguf.sh <NeoHorse-Jev-4B-dir> work/side
 python3 scripts/export_neohorsejev_head.py <NeoHorse-Jev-4B>/pointer_head.safetensors \
   work/side/neohorsejev-head.f32
 
-# jad：先将 LoRA 合并进 LLaDA-MoE-7B-A1B，再直接转换
-scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-EarlyPreview-Q8_0.gguf
+# jad：先将 LoRA 合并进 LLaDA-MoE-7B-A1B，再转换（同时写出 F16 与 Q8_0）
+scripts/build_jad_gguf.sh <LLaDA-MoE-7B-A1B-dir> <JAD-S1-dir> work/side/JAD-S1-7B-A1B-v0.5-Q8_0.gguf
 ```
 
-四者均量化为 Q8_0。`kev` 会在 fp32 下先合并 LoRA 再转换，并写出 `kev-head.f32`
+各模型均量化为 Q8_0；`jad` 的脚本还会在 Q8_0 之外保留合并后的 F16 文件。`kev` 会在 fp32 下先合并 LoRA 再转换，并写出 `kev-head.f32`
 （q 与 k 的 pointer 行及其偏置）与 `kev.json`。更大尺寸使用同一脚本并搭配对应的基座
 （decider-2b 用 Qwen3.5-2B，kev-4b 用 Qwen3.5-4B）；对于无法一次性载入内存的大型
 checkpoint，可加 `--stream` 以逐张量低内存合并。
