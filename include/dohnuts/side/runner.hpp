@@ -24,6 +24,7 @@ struct runner_options {
     int max_length = 4096;
     bool embeddings = false;   // kev needs hidden states; decider does not
     bool diffusion = false;    // LLaDA-MoE: non-causal, mask-seeded readout
+    bool require_diffusion = false; // jad: the model must be a masked-diffusion LM
     int n_seq_max = 1;         // >1 enables decode_shared (one sequence per row)
     flash_attn_mode flash_attn = flash_attn_mode::automatic;
 };

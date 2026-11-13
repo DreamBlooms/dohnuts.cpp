@@ -42,6 +42,7 @@ def _load_new_metadata():
 # (see scripts/compare/decision_parity.py). Others: pass --type and --template.
 PROFILE_DEFAULTS = {
     "decider": ("openjev", "decider.jinja"),
+    "jad":     ("pplx-decider", "jad.jinja"),
 }
 
 

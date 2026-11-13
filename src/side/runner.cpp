@@ -91,9 +91,14 @@ runner::runner(const runner_options & options) : p(std::make_unique<impl>()) {
     p->hidden = llama_model_n_embd(p->model);
     p->max_length = options.max_length;
     p->embeddings = options.embeddings;
-    p->diffusion = options.diffusion;
+    // The official profile asks for diffusion sizing on any decision model; only
+    // an actual diffusion architecture gets the non-causal batch treatment. The
+    // jad profile insists on it (and on a mask token).
+    p->diffusion = options.diffusion && llama_model_is_diffusion(p->model);
+    if (options.require_diffusion && !p->diffusion)
+        throw std::runtime_error("Model is not a diffusion model");
     p->mask_id = llama_vocab_mask(p->vocab);
-    if (p->diffusion && p->mask_id < 0)
+    if (options.require_diffusion && p->mask_id < 0)
         throw std::runtime_error("Model has no mask token (not a masked-diffusion model)");
 
     auto cparams = llama_context_default_params();

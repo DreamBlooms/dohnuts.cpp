@@ -107,7 +107,10 @@ side_engine::side_engine(const side_options & options) : p(std::make_unique<impl
     ropts.embeddings = p->kind == model_profile::kev || p->kind == model_profile::neohorsejev
         || (p->kind == model_profile::official
             && (decision_type == "kev" || decision_type == "laya"));
-    ropts.diffusion = p->kind == model_profile::jad;
+    // official may point at a diffusion decision model too; the runner keeps the
+    // non-causal sizing only when the loaded model actually is diffusion.
+    ropts.diffusion = p->kind == model_profile::jad || p->kind == model_profile::official;
+    ropts.require_diffusion = p->kind == model_profile::jad;
     p->shared_prefix = options.shared_prefix;
     // --shared-prefix batches a request's rows into one decode; it needs room for
     // one sequence per row. The diffusion (jad) profile uses its own canvas path.

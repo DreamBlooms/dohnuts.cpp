@@ -55,5 +55,20 @@ rm -f "$WORK/jad-base-f16.gguf"
 echo "==> quantizing Q8_0"
 "$TOOLS/llama-quantize" "$OUT_F16" "$OUT" Q8_0
 
+# Opt-in (DECISION=1): also write the official llama.cpp decision metadata and
+# the "systemone" template, so the GGUF loads directly in llama-server (and in
+# dohnuts --profile official). It is read as a pplx-decider label decision with
+# the mask slot as the answer token, the same shape as the tev1-style models.
+if [ "${DECISION:-0}" = "1" ]; then
+    TEMPERATURE=${TEMPERATURE:-1.2576}
+    for model in "$OUT_F16" "$OUT"; do
+        echo "==> annotating with official decision metadata: $model"
+        "$PYTHON" "$ROOT/scripts/annotate_decision.py" "$model" "$model" --profile jad \
+            --temperature "choice=$TEMPERATURE" \
+            --temperature "score=$TEMPERATURE" \
+            --temperature "noul=$TEMPERATURE"
+    done
+fi
+
 echo "==> done: $OUT_F16"
 echo "==> done: $OUT"
