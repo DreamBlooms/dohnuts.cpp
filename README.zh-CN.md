@@ -73,7 +73,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON
 cmake --build build -j --target dohnuts-cli
 ```
 
-llama.cpp 以子模块形式固定在 `v0.9.0` 发行版；`-DLLAMA_DIR=...` 可指定其他 checkout。
+llama.cpp 以子模块形式固定在 `v1.0.0` 发行版；`-DLLAMA_DIR=...` 可指定其他 checkout。
 
 ### Windows（交叉编译）
 
